@@ -1,9 +1,9 @@
 /**
  * Onboarding screen scaffold.
  *
- * Static version: faked iOS status bar, Skip button, hero illustration
- * (children), copy (eyebrow + headline + body), dot indicator, and CTA
- * button. No animation.
+ * Static version: Skip button, hero illustration (children), copy
+ * (eyebrow + headline + body), dot indicator, and CTA button.
+ * No animation, no fake status bar.
  */
 import { ReactNode } from 'react';
 import {
@@ -33,31 +33,6 @@ type OnboardingScreenProps = {
   style?: ViewStyle;
 };
 
-function FakeStatusBar() {
-  return (
-    <View style={styles.status}>
-      <Text style={styles.statusTime}>9:41</Text>
-      <View style={styles.statusRight}>
-        <View style={styles.signalBars}>
-          <View style={[styles.bar, { height: 4 }]} />
-          <View style={[styles.bar, { height: 6 }]} />
-          <View style={[styles.bar, { height: 8 }]} />
-          <View style={[styles.bar, { height: 11 }]} />
-        </View>
-        <View style={styles.wifi}>
-          <View style={[styles.wifiArc, styles.wifiArc3]} />
-          <View style={[styles.wifiArc, styles.wifiArc2]} />
-          <View style={styles.wifiDot} />
-        </View>
-        <View style={styles.battery}>
-          <View style={styles.batteryFill} />
-          <View style={styles.batteryTip} />
-        </View>
-      </View>
-    </View>
-  );
-}
-
 export function OnboardingScreen({
   eyebrow,
   headline,
@@ -83,9 +58,7 @@ export function OnboardingScreen({
 
   return (
     <View style={[styles.root, { backgroundColor: tokens.paper }, style]}>
-      <FakeStatusBar />
-
-      <SafeAreaView style={styles.safe} edges={['bottom']}>
+      <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
         <View style={styles.top}>
           {isLast ? (
             <View style={styles.skipSpacer} />
@@ -162,86 +135,6 @@ export function OnboardingScreen({
 const styles = StyleSheet.create({
   root: { flex: 1 },
   safe: { flex: 1, paddingHorizontal: 24, paddingBottom: 8 },
-  status: {
-    height: 44,
-    paddingHorizontal: 24,
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'space-between',
-    paddingBottom: 6,
-  },
-  statusTime: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#0E1116',
-  },
-  statusRight: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 6,
-  },
-  signalBars: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 2,
-  },
-  bar: {
-    width: 3,
-    backgroundColor: '#0E1116',
-    borderRadius: 1,
-  },
-  wifi: {
-    width: 14,
-    height: 10,
-    justifyContent: 'flex-end',
-    alignItems: 'center',
-  },
-  wifiArc: {
-    position: 'absolute',
-    borderColor: '#0E1116',
-    borderTopWidth: 1.6,
-    borderRadius: 999,
-  },
-  wifiArc2: {
-    width: 8,
-    height: 8,
-    bottom: 1,
-  },
-  wifiArc3: {
-    width: 14,
-    height: 14,
-    bottom: 0,
-  },
-  wifiDot: {
-    width: 2,
-    height: 2,
-    borderRadius: 1,
-    backgroundColor: '#0E1116',
-    marginBottom: 0,
-  },
-  battery: {
-    width: 24,
-    height: 11,
-    borderWidth: 1,
-    borderColor: '#0E1116',
-    borderRadius: 2.5,
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 1,
-  },
-  batteryFill: {
-    flex: 1,
-    backgroundColor: '#0E1116',
-    borderRadius: 1,
-  },
-  batteryTip: {
-    width: 1.5,
-    height: 4,
-    backgroundColor: '#0E1116',
-    marginLeft: 0.5,
-    borderTopRightRadius: 1,
-    borderBottomRightRadius: 1,
-  },
   top: {
     flexDirection: 'row',
     justifyContent: 'flex-end',

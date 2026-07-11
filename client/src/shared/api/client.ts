@@ -57,6 +57,26 @@ async function refreshAccessToken(): Promise<boolean> {
   return _refreshPromise.then(() => true).catch(() => false);
 }
 
+export async function publicApiFetch(path: string, options: RequestInit = {}): Promise<Response> {
+  const isFormData = options.body instanceof FormData;
+  const headers: HeadersInit = {
+    ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
+    ...options.headers,
+  };
+
+  try {
+    return await fetch(`${API_URL}${path}`, {
+      ...options,
+      headers,
+    });
+  } catch (e) {
+    console.error(`[publicApiFetch] network error: ${API_URL}${path}`, e);
+    throw new Error(
+      `Can't reach the server at ${API_URL}. Check your connection and try again.`,
+    );
+  }
+}
+
 export async function apiFetch(path: string, options: RequestInit = {}): Promise<Response> {
   const token = await getToken();
   const isFormData = options.body instanceof FormData;

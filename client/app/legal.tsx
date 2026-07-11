@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
-import { apiFetch } from '@/src/shared/api/client';
+import { apiFetch, publicApiFetch } from '@/src/shared/api/client';
 import { PageMark } from '@/components/PageMark';
 import { PagePay } from '@/constants/theme';
 import { useEffectiveScheme } from '@/src/shared/hooks/use-effective-scheme';
@@ -26,7 +26,7 @@ export default function LegalScreen() {
     let cancelled = false;
     (async () => {
       try {
-        const res = await apiFetch(`/api/v1/legal/${slug}`);
+        const res = await publicApiFetch(`/api/v1/legal/${slug}`);
         if (!res.ok) throw new Error('Failed to load');
         const data = await res.json();
         if (!cancelled) {

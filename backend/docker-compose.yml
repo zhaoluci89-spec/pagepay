@@ -30,7 +30,7 @@ services:
     environment:
       DATABASE_URL: mysql+aiomysql://pagepay:pagepass@db:3306/pagepay
       SECRET_KEY: ${SECRET_KEY}
-      CORS_ORIGINS: http://localhost:8081
+      CORS_ORIGINS: http://localhost:8081,https://pagepay-2e6i.onrender.com
       ADMIN_TOKEN: ${ADMIN_TOKEN}
       ENVIRONMENT: production
     depends_on:
