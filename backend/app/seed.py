@@ -290,8 +290,8 @@ async def run_migrations(db: AsyncSession) -> bool:
             await db.execute(text("SELECT version_num FROM alembic_version"))
         ).scalar_one_or_none()
     except Exception as exc:  # noqa: BLE001 — best-effort
-        logger.warning("Migrations skipped: cannot read alembic_version (%s)", exc)
-        return False
+        current_rev = None
+        logger.info("alembic: no alembic_version table yet (%s); will run upgrade.", exc)
 
     logger.info("alembic: current=%s head=%s", current_rev, head_rev)
 
