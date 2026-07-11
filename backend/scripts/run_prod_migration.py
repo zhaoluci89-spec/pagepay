@@ -75,7 +75,7 @@ def main() -> int:
 
     if not ALEMBIC_INI.exists():
         die(f"alembic.ini not found at {ALEMBIC_INI}. "
-            f"Run this from the repo root or backend/ directory.")
+            f"Run this  the repo root or backend/ directory.")
 
     env = os.environ.copy()
     env["DATABASE_URL"] = url

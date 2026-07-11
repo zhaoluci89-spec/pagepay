@@ -17,7 +17,7 @@ import os
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import AdPlacement, AppConfig, AiProviderHealth, AdminUser
+from app.models import AdPlacement, AppConfig, AiProviderHealth, AdminUser, ContentCatalog
 from app.config import settings
 
 
@@ -176,6 +176,23 @@ async def seed_ai_provider_health(db: AsyncSession) -> int:
     return inserted
 
 
+async def seed_initial_content(db: AsyncSession) -> int:
+    """Import a small batch of books if the catalog is empty.
+
+    Idempotent: skips if any parent content already exists. This keeps
+    startup fast on warm databases while still populating a fresh one.
+    """
+    existing = (await db.execute(select(ContentCatalog.id).limit(1))).scalar_one_or_none()
+    if existing is not None:
+        return 0
+    try:
+        from app.services.content.gutendex import import_gutendex
+        return await import_gutendex(db, limit=20, start_page=1)
+    except Exception as exc:  # noqa: BLE001 — startup seed; best-effort
+        logger.warning("Initial content seed failed: %s", exc)
+        return 0
+
+
 async def run_all_seeds(db: AsyncSession) -> dict[str, int]:
     """Run every seed. Returns a count of new rows per table for
     startup logging. Failures are logged and swallowed so a partial
@@ -189,6 +206,7 @@ async def run_all_seeds(db: AsyncSession) -> dict[str, int]:
         ("ai_provider_health", seed_ai_provider_health),
         ("app_config_streak", seed_streak_config),
         ("admin_users", seed_admin_users),
+        ("content", seed_initial_content),
     ):
         try:
             counts[name] = await fn(db)
