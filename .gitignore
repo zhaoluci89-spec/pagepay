@@ -41,3 +41,6 @@ pagepay-submit-*.json
 GoogleService-Info.plist
 firebase-service-account.json
 firebase-service-account.js!google-servon
+
+
+# postgresql://pagepay_db_user:PD1Ma3LaRBL0Zw7SrGGk9jOPlcnH3Ewf@dpg-d992ucu7r5hc73ampvv0-a/pagepay_db

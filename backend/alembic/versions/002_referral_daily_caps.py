@@ -30,25 +30,28 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        'users',
-        sa.Column(
-            'referrals_today_count',
-            sa.Integer(),
-            nullable=False,
-            server_default='0',
-        ),
-    )
-    op.add_column(
-        'users',
-        sa.Column(
-            'referrals_today_reset_at',
-            sa.DateTime(),
-            nullable=True,
-        ),
-    )
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    existing = [c['name'] for c in inspector.get_columns('users')]
+
+    if 'referrals_today_count' not in existing:
+        op.execute("""
+            ALTER TABLE users
+            ADD COLUMN referrals_today_count INTEGER DEFAULT 0 NOT NULL
+        """)
+    if 'referrals_today_reset_at' not in existing:
+        op.execute("""
+            ALTER TABLE users
+            ADD COLUMN referrals_today_reset_at DATETIME NULL
+        """)
 
 
 def downgrade() -> None:
-    op.drop_column('users', 'referrals_today_reset_at')
-    op.drop_column('users', 'referrals_today_count')
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    existing = [c['name'] for c in inspector.get_columns('users')]
+
+    if 'referrals_today_count' in existing:
+        op.drop_column('users', 'referrals_today_count')
+    if 'referrals_today_reset_at' in existing:
+        op.drop_column('users', 'referrals_today_reset_at')
