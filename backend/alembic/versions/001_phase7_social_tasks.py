@@ -128,7 +128,7 @@ def upgrade() -> None:
             sa.Column('ai_auto_approve_threshold', sa.BigInteger(), nullable=False, server_default='0.9'),
             sa.Column('manual_review_required', sa.Boolean(), nullable=False, server_default='0'),
             sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.text('CURRENT_TIMESTAMP')),
-            sa.Column('updated_at', sa.DateTime(), nullable=False, server_default=sa.text('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP')),
+            sa.Column('updated_at', sa.DateTime(), nullable=False, server_default=sa.text('CURRENT_TIMESTAMP')),
             sa.Column('published_at', sa.DateTime(), nullable=True),
             sa.Column('completed_at', sa.DateTime(), nullable=True),
             sa.Column('cancelled_at', sa.DateTime(), nullable=True),
@@ -230,7 +230,7 @@ def upgrade() -> None:
             sa.Column('avg_review_time_seconds', sa.Integer(), nullable=False, server_default='0'),
             sa.Column('trusted_sponsor', sa.Boolean(), nullable=False, server_default='0'),
             sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.text('CURRENT_TIMESTAMP')),
-            sa.Column('updated_at', sa.DateTime(), nullable=False, server_default=sa.text('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP')),
+            sa.Column('updated_at', sa.DateTime(), nullable=False, server_default=sa.text('CURRENT_TIMESTAMP')),
             sa.PrimaryKeyConstraint('user_id')
         )
         
@@ -383,7 +383,7 @@ def upgrade() -> None:
             sa.Column('avatar_url', sa.String(length=500), nullable=True),
             sa.Column('level', sa.Integer(), nullable=False),
             sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.text('CURRENT_TIMESTAMP')),
-            sa.Column('updated_at', sa.DateTime(), nullable=False, server_default=sa.text('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP')),
+            sa.Column('updated_at', sa.DateTime(), nullable=False, server_default=sa.text('CURRENT_TIMESTAMP')),
             sa.PrimaryKeyConstraint('id')
         )
         
@@ -418,7 +418,7 @@ def upgrade() -> None:
             sa.Column('avg_ai_confidence', sa.Float(), nullable=True),
             sa.Column('ai_auto_approve_count', sa.Integer(), nullable=False, server_default='0'),
             sa.Column('manual_review_count', sa.Integer(), nullable=False, server_default='0'),
-            sa.Column('updated_at', sa.DateTime(), nullable=False, server_default=sa.text('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP')),
+            sa.Column('updated_at', sa.DateTime(), nullable=False, server_default=sa.text('CURRENT_TIMESTAMP')),
             sa.PrimaryKeyConstraint('task_id')
         )
         

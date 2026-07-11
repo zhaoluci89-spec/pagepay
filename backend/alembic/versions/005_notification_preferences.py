@@ -33,7 +33,7 @@ def upgrade() -> None:
             sa.Column('quiet_hours_start', sa.Time(), nullable=True),
             sa.Column('quiet_hours_end', sa.Time(), nullable=True),
             sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.text('CURRENT_TIMESTAMP')),
-            sa.Column('updated_at', sa.DateTime(), nullable=False, server_default=sa.text('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP')),
+            sa.Column('updated_at', sa.DateTime(), nullable=False, server_default=sa.text('CURRENT_TIMESTAMP')),
             sa.PrimaryKeyConstraint('user_id'),
             sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE')
         )
@@ -49,7 +49,7 @@ def upgrade() -> None:
             sa.Column('device_id', sa.String(length=255), nullable=True),
             sa.Column('is_active', sa.Boolean(), nullable=False, server_default=sa.text('TRUE')),
             sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.text('CURRENT_TIMESTAMP')),
-            sa.Column('updated_at', sa.DateTime(), nullable=False, server_default=sa.text('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP')),
+            sa.Column('updated_at', sa.DateTime(), nullable=False, server_default=sa.text('CURRENT_TIMESTAMP')),
             sa.PrimaryKeyConstraint('id')
         )
         op.create_index(op.f('ix_fcm_tokens_user_id'), 'fcm_tokens', ['user_id'], unique=False)
