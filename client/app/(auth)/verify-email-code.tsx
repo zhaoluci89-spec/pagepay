@@ -5,17 +5,13 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
-  NativeSyntheticEvent,
-  TextInputKeyPressEventData,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
-import * as Clipboard from 'expo-clipboard';
 
 import { apiFetch } from '@/src/shared/api/client';
 import { PagePay } from '@/constants/theme';
@@ -34,15 +30,14 @@ export default function VerifyEmailCodeScreen({ email }: Props) {
   const scheme = useEffectiveScheme();
   const tokens = PagePay[scheme];
 
-  const [code, setCode] = useState<string[]>(() => Array(OTP_LENGTH).fill(''));
+  const [code, setCode] = useState('');
   const [sending, setSending] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const inputs = useRef<(TextInput | null)[]>([]);
+  const hiddenRef = useRef<TextInput | null>(null);
 
-  const codeRef = useRef(code);
-  codeRef.current = code;
+  const digits = code.split('').slice(0, OTP_LENGTH);
 
   const submit = useCallback(async (fullCode: string) => {
     if (!email || fullCode.length !== OTP_LENGTH) return;
@@ -68,86 +63,15 @@ export default function VerifyEmailCodeScreen({ email }: Props) {
     }
   }, [email, router, t]);
 
-  const distributePaste = useCallback((raw: string, startIndex: number) => {
-    const digits = raw.replace(/[^0-9]/g, '').slice(0, OTP_LENGTH - startIndex);
-    if (!digits) return;
-
-    setCode((prev) => {
-      const next = [...prev];
-      for (let i = 0; i < digits.length; i++) {
-        next[startIndex + i] = digits[i];
-      }
-      return next;
-    });
+  const handleChange = useCallback((value: string) => {
+    const digits = value.replace(/[^0-9]/g, '').slice(0, OTP_LENGTH);
+    setCode(digits);
     setError(null);
 
-    const filledCount = Math.min(digits.length, OTP_LENGTH - startIndex);
-    const lastFilledIndex = startIndex + filledCount - 1;
-
-    if (startIndex + digits.length >= OTP_LENGTH) {
-      setTimeout(() => {
-        const full = codeRef.current.join('');
-        if (full.length === OTP_LENGTH) {
-          submit(full);
-        }
-      }, 0);
-    } else if (filledCount > 0) {
-      setTimeout(() => inputs.current[lastFilledIndex + 1]?.focus(), 0);
+    if (digits.length === OTP_LENGTH) {
+      submit(digits);
     }
   }, [submit]);
-
-  const handleChange = useCallback((index: number, value: string) => {
-    const digits = value.replace(/[^0-9]/g, '').slice(-1);
-    if (!digits) return;
-
-    setCode((prev) => {
-      const next = [...prev];
-      next[index] = digits;
-      return next;
-    });
-    setError(null);
-
-    if (index < OTP_LENGTH - 1) {
-      setTimeout(() => inputs.current[index + 1]?.focus(), 0);
-    }
-
-    setTimeout(() => {
-      const full = codeRef.current.every((d) => d.length === 1);
-      if (full) {
-        submit(codeRef.current.join(''));
-      }
-    }, 0);
-  }, [submit]);
-
-  const handleKeyPress = useCallback((index: number, e: NativeSyntheticEvent<TextInputKeyPressEventData>) => {
-    if (e.nativeEvent.key !== 'Backspace') return;
-
-    setCode((prev) => {
-      if (prev[index].length === 1) {
-        const next = [...prev];
-        next[index] = '';
-        return next;
-      }
-      if (index > 0) {
-        const next = [...prev];
-        next[index - 1] = '';
-        setTimeout(() => inputs.current[index - 1]?.focus(), 0);
-        return next;
-      }
-      return prev;
-    });
-    setError(null);
-  }, []);
-
-  const handlePaste = useCallback(async (index: number) => {
-    try {
-      const text = await Clipboard.getStringAsync();
-      if (!text) return;
-      distributePaste(text, index);
-    } catch {
-      // clipboard not available
-    }
-  }, [distributePaste]);
 
   const handleResend = useCallback(async () => {
     setSending(true);
@@ -170,8 +94,12 @@ export default function VerifyEmailCodeScreen({ email }: Props) {
     }
   }, [t]);
 
+  const focusHidden = useCallback(() => {
+    hiddenRef.current?.focus();
+  }, []);
+
   useEffect(() => {
-    inputs.current[0]?.focus();
+    hiddenRef.current?.focus();
   }, []);
 
   return (
@@ -200,33 +128,40 @@ export default function VerifyEmailCodeScreen({ email }: Props) {
           </View>
         ) : null}
 
-        <View style={styles.codeRow}>
-          {code.map((digit, i) => (
-            <TextInput
-              key={i}
-              ref={(ref) => { inputs.current[i] = ref; }}
-              value={digit}
-              onChangeText={(value) => handleChange(i, value)}
-              onKeyPress={(e) => handleKeyPress(i, e)}
-              onPaste={() => handlePaste(i)}
-              keyboardType="number-pad"
-              maxLength={1}
-              textContentType="oneTimeCode"
-              autoComplete="sms-otp"
-              editable={!verifying}
-              style={[
-                styles.codeBox,
-                { color: tokens.ink, borderColor: digit ? tokens.mint : tokens.border, backgroundColor: tokens.card },
-              ]}
-            />
-          ))}
+        <View style={styles.otpSurface}>
+          <View style={styles.codeRow}>
+            {Array.from({ length: OTP_LENGTH }).map((_, i) => (
+              <TouchableOpacity key={i} activeOpacity={0.8} onPress={focusHidden}>
+                <View style={[
+                  styles.codeBox,
+                  { borderColor: digits[i] ? tokens.mint : tokens.border, backgroundColor: tokens.card },
+                ]}>
+                  <Text style={[styles.codeBoxText, { color: tokens.ink }]}>
+                    {digits[i] || ''}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <TextInput
+            ref={hiddenRef}
+            value={code}
+            onChangeText={handleChange}
+            keyboardType="number-pad"
+            maxLength={OTP_LENGTH}
+            textContentType="oneTimeCode"
+            autoComplete="sms-otp"
+            editable={!verifying}
+            style={styles.hiddenInput}
+          />
         </View>
 
-        <View style={{ gap: 12, marginTop: 24 }}>
+        <View style={{ gap: 12, marginTop: 24, width: '100%' }}>
           <PrimaryButton
             title={verifying ? t('verify_email.verifying') : t('verify_email.verify')}
-            onPress={() => submit(code.join(''))}
-            disabled={verifying || code.some((d) => d.length !== 1)}
+            onPress={() => submit(code)}
+            disabled={verifying || code.length !== OTP_LENGTH}
           />
           <TouchableOpacity onPress={handleResend} disabled={sending}>
             <Text style={[styles.resend, { color: tokens.mint }]}>
@@ -283,6 +218,10 @@ const styles = StyleSheet.create({
     fontSize: 13,
     textAlign: 'center',
   },
+  otpSurface: {
+    width: '100%',
+    alignItems: 'center',
+  },
   codeRow: {
     flexDirection: 'row',
     justifyContent: 'center',
@@ -297,9 +236,19 @@ const styles = StyleSheet.create({
     height: 56,
     borderRadius: 12,
     borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  codeBoxText: {
     fontSize: 24,
     fontWeight: '700',
     textAlign: 'center',
+  },
+  hiddenInput: {
+    position: 'absolute',
+    width: 0,
+    height: 0,
+    opacity: 0,
   },
   resend: {
     fontSize: 14,
