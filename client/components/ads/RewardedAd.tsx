@@ -149,7 +149,7 @@ export function RewardedAd(props: RewardedAdProps) {
       try {
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         const sdk = require('react-native-google-mobile-ads');
-        const { RewardedAd: RealRewardedAd, RewardedAdEventType } = sdk;
+        const { RewardedAd: RealRewardedAd, RewardedAdEventType, AdEventType } = sdk;
 
         // Step 2: ask the server for a one-time AdRequest token.
         // The returned `custom_data` carries the token into the
@@ -184,7 +184,7 @@ export function RewardedAd(props: RewardedAdProps) {
         });
 
         // Ad closed. This is where the credit polling kicks in.
-        const unsubClosed = ad.addAdEventListener(RewardedAdEventType.CLOSED, async () => {
+        const unsubClosed = ad.addAdEventListener(AdEventType.CLOSED, async () => {
           if (__DEV__) {
             console.log('[RewardedAd] Ad closed');
           }

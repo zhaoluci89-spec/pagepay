@@ -10,6 +10,7 @@ from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.models import User
 from app.routers.auth import get_current_user
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
@@ -64,14 +65,14 @@ class FCMTokenResponse(BaseModel):
 
 @router.get("/preferences", response_model=NotificationPreferencesResponse)
 async def get_notification_preferences(
-    current_user: dict = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
     Get user's notification preferences.
     Creates default preferences if none exist.
     """
-    user_id = current_user["id"]
+    user_id = current_user.id
 
     # Check if preferences exist
     query = select(
@@ -113,13 +114,13 @@ async def get_notification_preferences(
 @router.put("/preferences", response_model=NotificationPreferencesResponse)
 async def update_notification_preferences(
     preferences: NotificationPreferences,
-    current_user: dict = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
     Update user's notification preferences.
     """
-    user_id = current_user["id"]
+    user_id = current_user.id
 
     # Parse time strings if provided
     quiet_start = None
@@ -180,14 +181,14 @@ async def update_notification_preferences(
 @router.post("/fcm-token", response_model=FCMTokenResponse, status_code=status.HTTP_201_CREATED)
 async def register_fcm_token(
     token_req: FCMTokenRequest,
-    current_user: dict = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
     Register FCM token for push notifications.
     If token already exists, mark it as active and update timestamp.
     """
-    user_id = current_user["id"]
+    user_id = current_user.id
 
     # Check if token already exists
     table = db.bind.execute.__self__.tables["fcm_tokens"]
@@ -238,14 +239,14 @@ async def register_fcm_token(
 @router.delete("/fcm-token/{token}", status_code=status.HTTP_204_NO_CONTENT)
 async def deregister_fcm_token(
     token: str,
-    current_user: dict = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
     Deregister FCM token (mark as inactive).
     Called when user logs out or uninstalls app.
     """
-    user_id = current_user["id"]
+    user_id = current_user.id
 
     table = db.bind.execute.__self__.tables["fcm_tokens"]
     stmt = (
@@ -268,14 +269,14 @@ async def deregister_fcm_token(
 
 @router.get("/fcm-tokens", response_model=list[FCMTokenResponse])
 async def list_fcm_tokens(
-    current_user: dict = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
     List all active FCM tokens for current user.
     Useful for debugging or device management.
     """
-    user_id = current_user["id"]
+    user_id = current_user.id
 
     table = db.bind.execute.__self__.tables["fcm_tokens"]
     query = select(table).where(
