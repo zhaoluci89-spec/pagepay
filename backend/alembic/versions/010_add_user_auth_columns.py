@@ -1,7 +1,7 @@
 """Add missing user auth columns to production users table.
 
 Revision ID: 010_add_user_auth_columns
-Revises: 009_adjust_points_conversion_rate
+Revises: 009_adj_points_rate
 Create Date: 2026-07-08 18:01:00.000000
 
 """
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 revision: str = '010_add_user_auth_columns'
-down_revision: Union[str, None] = '009_adjust_points_conversion_rate'
+down_revision: Union[str, None] = '009_adj_points_rate'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
