@@ -41,6 +41,9 @@ export default function VerifyEmailCodeScreen({ email }: Props) {
   const [error, setError] = useState<string | null>(null);
   const inputs = useRef<(TextInput | null)[]>([]);
 
+  const codeRef = useRef(code);
+  codeRef.current = code;
+
   const submit = useCallback(async (fullCode: string) => {
     if (!email || fullCode.length !== OTP_LENGTH) return;
     setVerifying(true);
@@ -82,11 +85,16 @@ export default function VerifyEmailCodeScreen({ email }: Props) {
     const lastFilledIndex = startIndex + filledCount - 1;
 
     if (startIndex + digits.length >= OTP_LENGTH) {
-      setTimeout(() => submit(code.join('')), 0);
+      setTimeout(() => {
+        const full = codeRef.current.join('');
+        if (full.length === OTP_LENGTH) {
+          submit(full);
+        }
+      }, 0);
     } else if (filledCount > 0) {
       setTimeout(() => inputs.current[lastFilledIndex + 1]?.focus(), 0);
     }
-  }, [code, submit]);
+  }, [submit]);
 
   const handleChange = useCallback((index: number, value: string) => {
     const digits = value.replace(/[^0-9]/g, '').slice(-1);
@@ -104,12 +112,12 @@ export default function VerifyEmailCodeScreen({ email }: Props) {
     }
 
     setTimeout(() => {
-      const full = code.every((d) => d.length === 1);
+      const full = codeRef.current.every((d) => d.length === 1);
       if (full) {
-        submit(code.join(''));
+        submit(codeRef.current.join(''));
       }
     }, 0);
-  }, [code, submit]);
+  }, [submit]);
 
   const handleKeyPress = useCallback((index: number, e: NativeSyntheticEvent<TextInputKeyPressEventData>) => {
     if (e.nativeEvent.key !== 'Backspace') return;
