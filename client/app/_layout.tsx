@@ -53,13 +53,7 @@ function useAuthGate() {
       } else if (token && inAuthGroup && segments[1] !== 'verify-email-code') {
         router.replace('/(tabs)');
       }
-        // else: already on /onboarding or /auth/* — leave alone.
-      } else if (token && inAuthGroup) {
-        // Have a token and currently on an auth screen → go to tabs.
-        router.replace('/(tabs)');
-      }
-      // else: have a token and on tabs (valid), OR no token and on
-      // onboarding/auth (valid).
+      // else: already on /onboarding or /auth/* — leave alone.
 
       // Small delay to let the scheduled navigation take effect before
       // we allow the layout to render. Prevents a flash of the wrong
