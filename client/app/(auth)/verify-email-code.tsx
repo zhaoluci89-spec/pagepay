@@ -226,14 +226,13 @@ const styles = StyleSheet.create({
   codeRow: {
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 10,
+    gap: 8,
     marginTop: 8,
     width: '100%',
-    paddingHorizontal: 8,
+    paddingHorizontal: 16,
   },
   codeBox: {
-    flex: 1,
-    maxWidth: 56,
+    width: 48,
     height: 56,
     borderRadius: 12,
     borderWidth: 2,
