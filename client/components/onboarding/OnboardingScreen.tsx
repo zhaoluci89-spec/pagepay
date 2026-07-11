@@ -1,19 +1,11 @@
 /**
  * Onboarding screen scaffold.
  *
- * Lays out one onboarding "phone screen" — faked status bar at the top,
- * a `Skip` button (right-aligned, hidden on the last screen), the
- * hero illustration (children), copy (eyebrow + headline + body), the
- * dot indicator, and a CTA button with a pulse halo and tap ripple.
- *
- * The hero is rendered as a `children` slot so each screen's hero
- * (book / study / wallet / streak / premium) is its own component.
- *
- * The CTA has a `pulse` halo (the same one from the auth login screen)
- * and a ripple effect on tap. Final-screen `Get started` taps also
- * fire the parent-supplied `onGetStarted` which kicks off the confetti.
+ * Static version: faked iOS status bar, Skip button, hero illustration
+ * (children), copy (eyebrow + headline + body), dot indicator, and CTA
+ * button. No animation.
  */
-import { ReactNode, useEffect } from 'react';
+import { ReactNode } from 'react';
 import {
   Pressable,
   StyleSheet,
@@ -22,14 +14,6 @@ import {
   ViewStyle,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Animated, {
-  Easing,
-  cancelAnimation,
-  useAnimatedStyle,
-  useSharedValue,
-  withRepeat,
-  withTiming,
-} from 'react-native-reanimated';
 import { useTranslation } from 'react-i18next';
 
 import { Fonts, PagePay } from '@/constants/theme';
@@ -37,52 +21,34 @@ import { useEffectiveScheme } from '@/src/shared/hooks/use-effective-scheme';
 import { OnboardingDots } from './Dots';
 
 type OnboardingScreenProps = {
-  /** Small uppercase eyebrow above the headline. */
   eyebrow: string;
-  /** H2 headline. */
   headline: string;
-  /** Body copy beneath the headline. */
   body: string;
-  /** True on the final screen; hides Skip and changes CTA label. */
   isLast?: boolean;
-  /** Index 0..n of this screen. */
   index: number;
-  /** Total number of screens (for the dot indicator). */
   total: number;
-  /** Skip-jump handler; ignored when `isLast`. */
   onSkip: () => void;
-  /** Next / Get started handler. */
   onPrimary: (origin: { x: number; y: number }) => void;
-  /** Hero illustration. */
   children: ReactNode;
-  /** Extra style overrides for the root view. */
   style?: ViewStyle;
 };
 
-/**
- * Faked iOS status bar: 9:41 clock + signal bars + wifi + battery.
- * We use this for visual fidelity with the HTML preview; the real
- * StatusBar is controlled at the layout level.
- */
 function FakeStatusBar() {
   return (
     <View style={styles.status}>
       <Text style={styles.statusTime}>9:41</Text>
       <View style={styles.statusRight}>
-        {/* signal bars */}
         <View style={styles.signalBars}>
           <View style={[styles.bar, { height: 4 }]} />
           <View style={[styles.bar, { height: 6 }]} />
           <View style={[styles.bar, { height: 8 }]} />
           <View style={[styles.bar, { height: 11 }]} />
         </View>
-        {/* wifi glyph (3 arcs) */}
         <View style={styles.wifi}>
           <View style={[styles.wifiArc, styles.wifiArc3]} />
           <View style={[styles.wifiArc, styles.wifiArc2]} />
           <View style={styles.wifiDot} />
         </View>
-        {/* battery */}
         <View style={styles.battery}>
           <View style={styles.batteryFill} />
           <View style={styles.batteryTip} />
@@ -108,67 +74,7 @@ export function OnboardingScreen({
   const scheme = useEffectiveScheme();
   const tokens = PagePay[scheme];
 
-  // Ripple origin captured at tap-down. These must be shared values
-  // because the ripple's `useAnimatedStyle` reads them on the UI thread.
-  const rippleScale = useSharedValue(0);
-  const rippleOpacity = useSharedValue(0);
-  const rippleX = useSharedValue(0);
-  const rippleY = useSharedValue(0);
-
-  // Halo pulse (continuous loop, not focus-gated because the CTA only
-  // exists on the active screen anyway).
-  const halo = useSharedValue(0);
-
-  const haloStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: 1 + halo.value * 0.04 }],
-    opacity: halo.value * 0.4,
-  }));
-
-  const rippleStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: rippleX.value - 180 },
-      { translateY: rippleY.value - 180 },
-      { scale: rippleScale.value },
-    ],
-    opacity: rippleOpacity.value,
-  }));
-
-  // Boot the halo pulse once on mount. The CTA is the same instance
-  // across its screen's lifetime (we only swap screens, not CTAs), so
-  // a mount-once pattern is fine.
-  useEffect(() => {
-    halo.value = withRepeat(
-      withTiming(1, { duration: 1600, easing: Easing.inOut(Easing.cubic) }),
-      -1,
-      true,
-    );
-    return () => {
-      cancelAnimation(halo);
-    };
-  }, [halo]);
-
-  const handlePress = (e: any) => {
-    // Capture the press point relative to the CTA box so the ripple
-    // can expand from where the finger actually landed.
-    rippleX.value = e.nativeEvent.locationX;
-    rippleY.value = e.nativeEvent.locationY;
-    rippleScale.value = 0;
-    rippleOpacity.value = 0.6;
-    rippleScale.value = withTiming(1, {
-      duration: 600,
-      easing: Easing.out(Easing.cubic),
-    });
-    rippleOpacity.value = withTiming(0, {
-      duration: 600,
-      easing: Easing.out(Easing.cubic),
-    });
-  };
-
   const handlePrimary = (e: any) => {
-    // Get absolute screen coordinates for the confetti origin. The
-    // Pressable's onPress fires after the ripple; we use
-    // `pageX/pageY` (page = scrolled + screen) so the burst starts
-    // at the actual tap point even if the user is mid-swipe.
     const target = e.target;
     target?.measure?.((x: number, y: number, w: number, h: number, px: number, py: number) => {
       onPrimary({ x: px + w / 2, y: py + h / 2 });
@@ -223,12 +129,7 @@ export function OnboardingScreen({
           <OnboardingDots count={total} active={index} />
 
           <View style={styles.ctaWrap}>
-            <Animated.View
-              pointerEvents="none"
-              style={[styles.halo, { backgroundColor: tokens.mint }, haloStyle]}
-            />
             <Pressable
-              onPressIn={handlePress}
               onPress={handlePrimary}
               accessibilityRole="button"
               accessibilityLabel={isLast ? t('onboarding.get_started') : t('onboarding.next')}
@@ -249,13 +150,6 @@ export function OnboardingScreen({
                 </Text>
               </View>
             </Pressable>
-            <Animated.View
-              pointerEvents="none"
-              style={[
-                styles.ripple,
-                rippleStyle,
-              ]}
-            />
           </View>
         </View>
 
@@ -394,14 +288,6 @@ const styles = StyleSheet.create({
   ctaWrap: {
     position: 'relative',
   },
-  halo: {
-    position: 'absolute',
-    top: -2,
-    left: -2,
-    right: -2,
-    bottom: -2,
-    borderRadius: 16,
-  },
   cta: {
     borderRadius: 14,
     paddingVertical: 17,
@@ -416,15 +302,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     letterSpacing: 0.1,
-  },
-  ripple: {
-    position: 'absolute',
-    width: 360,
-    height: 360,
-    borderRadius: 180,
-    backgroundColor: 'rgba(255,255,255,0.45)',
-    top: 0,
-    left: 0,
   },
   homeIndicator: {
     width: 134,

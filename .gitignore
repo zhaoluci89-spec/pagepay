@@ -25,15 +25,14 @@ backend/mysql_data/
 # Secrets & Credentials
 credentials.json
 **/credentials.json
-*.json
 !package*.json
 !tsconfig*.json
 !*config*.json
 !app.json
 !.vscode/*.json
 !client/src/lib/locales/*.json
-!google-services.json
-!**/google-services.json
+ices.json
+
 pagepay-submit-*.json
 *-submit-*
 
@@ -41,4 +40,4 @@ pagepay-submit-*.json
 # google-services.json is committed to git so EAS Build can access it
 GoogleService-Info.plist
 firebase-service-account.json
-firebase-service-account.json
+firebase-service-account.js!google-servon
