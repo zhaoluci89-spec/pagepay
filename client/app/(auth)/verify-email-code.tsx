@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
+import * as Clipboard from 'expo-clipboard';
 
 import { apiFetch } from '@/src/shared/api/client';
 import { PagePay } from '@/constants/theme';
@@ -36,6 +37,21 @@ export default function VerifyEmailCodeScreen({ email }: Props) {
   const [error, setError] = useState<string | null>(null);
   const inputs = useRef<(TextInput | null)[]>([]);
 
+  const applyCode = useCallback((raw: string) => {
+    const digits = raw.replace(/[^0-9]/g, '').slice(0, 6);
+    const next = ['', '', '', '', '', ''];
+    for (let i = 0; i < digits.length && i < 6; i++) {
+      next[i] = digits[i];
+    }
+    setCode(next);
+    setError(null);
+    if (digits.length === 6) {
+      verifyCode(next.join(''));
+    } else if (digits.length > 0) {
+      inputs.current[Math.min(digits.length, 5)]?.focus();
+    }
+  }, [verifyCode]);
+
   const handleChange = useCallback((index: number, value: string) => {
     const digits = value.replace(/[^0-9]/g, '').slice(-1);
     const next = [...code];
@@ -51,7 +67,17 @@ export default function VerifyEmailCodeScreen({ email }: Props) {
     if (full) {
       verifyCode(next.join(''));
     }
-  }, [code]);
+  }, [code, verifyCode]);
+
+  const handlePaste = useCallback(async (index: number) => {
+    try {
+      const text = await Clipboard.getStringAsync();
+      if (!text) return;
+      applyCode(text);
+    } catch {
+      // clipboard not available
+    }
+  }, [applyCode]);
 
   const verifyCode = useCallback(async (fullCode: string) => {
     if (!email) return;
@@ -135,6 +161,7 @@ export default function VerifyEmailCodeScreen({ email }: Props) {
               ref={(ref) => { inputs.current[i] = ref; }}
               value={digit}
               onChangeText={(value) => handleChange(i, value)}
+              onPaste={() => handlePaste(i)}
               keyboardType="number-pad"
               maxLength={1}
               textContentType="oneTimeCode"
@@ -177,12 +204,12 @@ export default function VerifyEmailCodeScreen({ email }: Props) {
 const styles = StyleSheet.create({
   scroll: {
     paddingHorizontal: 24,
+    paddingTop: 48,
     paddingBottom: 48,
     gap: 16,
   },
   iconWrap: {
     alignItems: 'center',
-    marginTop: 48,
     marginBottom: 8,
   },
   icon: {
@@ -212,9 +239,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 10,
     marginTop: 8,
+    paddingHorizontal: 16,
   },
   codeBox: {
-    width: 48,
+    flex: 1,
+    maxWidth: 56,
     height: 56,
     borderRadius: 12,
     borderWidth: 2,
