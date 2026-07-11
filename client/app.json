@@ -3,6 +3,7 @@
     "name": "pagepay",
     "slug": "pagepay",
     "version": "1.0.0",
+    "owner": "zhaoluci89",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "client",
@@ -36,7 +37,9 @@
             "kotlinVersion": "2.1.0",
             "extraBackgroundColor": "#FBFAF6",
             "packagingOptions": {
-              "pickFirst": ["**/libcrypto.so"]
+              "pickFirst": [
+                "**/libcrypto.so"
+              ]
             }
           }
         }
@@ -68,7 +71,7 @@
     },
     "extra": {
       "eas": {
-        "projectId": "b43a48ba-f084-472f-ac1c-3db5fa470326"
+        "projectId": "075e866b-c37a-4f9f-ba5e-24fca3053213"
       }
     }
   }

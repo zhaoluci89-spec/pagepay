@@ -36,7 +36,7 @@ pagepay-submit-*.json
 *-submit-*
 
 # Firebase config files (contain API keys)
-google-services.json
+# google-services.json is committed to git so EAS Build can access it
 GoogleService-Info.plist
 firebase-service-account.json
 firebase-service-account.json
