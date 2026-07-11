@@ -513,6 +513,7 @@
   "verify_email": {
     "title": "Verify your email",
     "subtitle": "We don send verification link to",
+    "code_subtitle": "Enter di 6-digit code we send to",
     "your_email": "your email",
     "open_email": "Open Email App",
     "resend": "Send Again",
@@ -521,7 +522,10 @@
     "spam_hint": "Check your spam folder if you no see am.",
     "success": "Verification email don send! Check your inbox.",
     "error_resend": "E no work. Try again.",
-    "error_connection": "We no fit reach server. Check your connection."
+    "error_connection": "We no fit reach server. Check your connection.",
+    "error_generic": "Verification no work. Try again.",
+    "verifying": "Dey verify...",
+    "verify": "Verify"
   },
   "billing_history": {
     "title": "Payment History",

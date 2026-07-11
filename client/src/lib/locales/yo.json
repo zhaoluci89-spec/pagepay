@@ -513,6 +513,7 @@
   "verify_email": {
     "title": "Jẹrisi imeeli rẹ",
     "subtitle": "A fi ọna asopọ ijẹrisi ranṣẹ si",
+    "code_subtitle": "Tẹ koodu 6-digit ti a fi ranṣẹ si",
     "your_email": "imeeli rẹ",
     "open_email": "Ṣii Ohun elo Imeeli",
     "resend": "Tun Imeeli Ranṣẹ",
@@ -521,7 +522,10 @@
     "spam_hint": "Wo folda spam rẹ ti o ko ba rii.",
     "success": "Imeeli ijẹrisi ti ranṣẹ! Wo inu apoti rẹ.",
     "error_resend": "Ko si ṣiṣẹ lati tun ranṣẹ. Gbiyanju lẹẹkansi.",
-    "error_connection": "Ko le de olupin. Ṣayẹwo isopọ rẹ."
+    "error_connection": "Ko le de olupin. Ṣayẹwo isopọ rẹ.",
+    "error_generic": "Ijẹrisi kuna. Gbiyanju lẹẹkansi.",
+    "verifying": "N jẹrisi...",
+    "verify": "Jẹrisi"
   },
   "billing_history": {
     "title": "Itan Isanwo",

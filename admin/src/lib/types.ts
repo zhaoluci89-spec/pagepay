@@ -229,3 +229,11 @@ export interface ContentPerformanceItem {
   title: string;
   reading_sessions: number;
 }
+
+export interface PlatformConfig {
+  ad_revenue_platform_percent: number;
+  ad_revenue_user_percent: number;
+  task_revenue_platform_percent: number;
+  task_revenue_worker_percent: number;
+  task_base_rates_kobo: Record<string, number>;
+}

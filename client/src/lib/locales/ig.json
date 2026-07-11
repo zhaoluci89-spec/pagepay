@@ -513,6 +513,7 @@
   "verify_email": {
     "title": "Nyochaa email gị",
     "subtitle": "Anyị zigara njikọ nnyocha na",
+    "code_subtitle": "Tinye koodu 6-digit anyị zigara",
     "your_email": "email gị",
     "open_email": "Mepee Ngwa Email",
     "resend": "Ziga Email Ọzọ",
@@ -521,7 +522,10 @@
     "spam_hint": "Lelee nchekwa spam gị ma ọ bụrụ na ị hụghị ya.",
     "success": "Ezigara email nnyocha! Lelee igbe ozi gị.",
     "error_resend": "Enweghị ike iziga ọzọ. Gbalịa ọzọ.",
-    "error_connection": "Enweghị ike iru seva ahụ. Lelee njikọ gị."
+    "error_connection": "Enweghị ike iru seva ahụ. Lelee njikọ gị.",
+    "error_generic": "Nnyocha dara. Gbalịa ọzọ.",
+    "verifying": "Na-enyocha...",
+    "verify": "Nyochaa"
   },
   "billing_history": {
     "title": "Akụkọ Ịkwụ Ụgwọ",

@@ -513,6 +513,7 @@
   "verify_email": {
     "title": "Verify your email",
     "subtitle": "We sent a verification link to",
+    "code_subtitle": "Enter the 6-digit code we sent to",
     "your_email": "your email",
     "open_email": "Open Email App",
     "resend": "Resend Email",
@@ -521,7 +522,10 @@
     "spam_hint": "Check your spam folder if you don't see it.",
     "success": "Verification email sent! Check your inbox.",
     "error_resend": "Failed to resend. Try again.",
-    "error_connection": "Can't reach the server. Check your connection."
+    "error_connection": "Can't reach the server. Check your connection.",
+    "error_generic": "Verification failed. Try again.",
+    "verifying": "Verifying...",
+    "verify": "Verify"
   },
   "billing_history": {
     "title": "Billing History",

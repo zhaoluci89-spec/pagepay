@@ -33,17 +33,22 @@ async def send_email(to: str, subject: str, html: str) -> bool:
         return False
 
 
-async def send_verification_email(to: str, token: str) -> bool:
-    """Send email verification link."""
+async def send_verification_email(to: str, token: str, code: str) -> bool:
+    """Send email verification with code and fallback link."""
     verify_url = f"{settings.public_base_url}/verify-email?email={to}&token={token}"
     html = f"""
     <html>
     <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
         <h2 style="color: #4F46E5;">Verify your email address</h2>
-        <p>Thanks for signing up for PagePay! Please verify your email address by clicking the button below:</p>
-        <a href="{verify_url}" style="display: inline-block; padding: 12px 24px; background-color: #4F46E5; color: white; text-decoration: none; border-radius: 8px; margin: 20px 0;">Verify Email</a>
-        <p style="color: #666; font-size: 14px;">This link will expire in 24 hours.</p>
+        <p>Thanks for signing up for PagePay! Enter this 6-digit code in the app to verify your email:</p>
+        <div style="background-color: #F3F4F6; border-radius: 8px; padding: 20px; text-align: center; margin: 20px 0;">
+            <span style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #4F46E5;">{code}</span>
+        </div>
+        <p style="color: #666; font-size: 14px;">This code will expire in 24 hours.</p>
         <p style="color: #666; font-size: 14px;">If you didn't create an account, you can safely ignore this email.</p>
+        <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 20px 0;">
+        <p style="color: #9CA3AF; font-size: 12px;">Or click the link below:</p>
+        <a href="{verify_url}" style="color: #4F46E5; font-size: 14px;">{verify_url}</a>
     </body>
     </html>
     """

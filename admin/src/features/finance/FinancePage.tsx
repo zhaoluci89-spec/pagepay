@@ -7,7 +7,7 @@ import { TopHeader } from '@/shared/components/TopHeader';
 import { useLayoutContext } from '@/shared/components/Layout';
 import { useAuthStore } from '@/store/auth';
 import { CheckCircle, XCircle } from 'lucide-react';
-import { usePlatformConfig } from '@/src/shared/hooks/use-platform-config';
+import { usePlatformConfig } from '@/shared/hooks/use-platform-config';
 
 function formatNgn(kobo: number = 0) {
   return `₦${(kobo / 100).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;

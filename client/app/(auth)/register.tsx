@@ -181,7 +181,7 @@ export default function RegisterScreen() {
         await saveRefreshToken(data.refresh_token);
       }
       setSuccess(true);
-      setTimeout(() => router.replace({ pathname: '/(auth)/verify-email', params: { email: email.trim() } }), 1000);
+      setTimeout(() => router.replace({ pathname: '/(auth)/verify-email-code', params: { email: email.trim() } }), 1000);
     } catch {
       setFormError(t('auth.register.errors.connection_error'));
       setErrorTrigger(true);

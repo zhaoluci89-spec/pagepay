@@ -42,6 +42,7 @@ class User(Base):
     locked_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     email_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     email_verification_token: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    email_verification_code: Mapped[str | None] = mapped_column(String(255), nullable=True)
     email_verification_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_login_ip: Mapped[str | None] = mapped_column(String(45), nullable=True)

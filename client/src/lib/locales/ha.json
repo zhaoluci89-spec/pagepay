@@ -513,6 +513,7 @@
   "verify_email": {
     "title": "Tabbatar da email ɗin ku",
     "subtitle": "Mun aika hanyar tabbatarwa zuwa",
+    "code_subtitle": "Shigar da lambar 6-digit da muka aika zuwa",
     "your_email": "email ɗin ku",
     "open_email": "Buɗe App Email",
     "resend": "Sake Aika Email",
@@ -521,7 +522,10 @@
     "spam_hint": "Duba babban akwatin spam ɗin ku idan ba ku gani ba.",
     "success": "An aika email tabbatarwa! Duba akwatin saƙon ku.",
     "error_resend": "Ba a iya sake aikawa ba. Sake gwadawa.",
-    "error_connection": "Ba za mu iya kaiwa ga sabar ba. Duba haɗin ku."
+    "error_connection": "Ba za mu iya kaiwa ga sabar ba. Duba haɗin ku.",
+    "error_generic": "Tabbatarwa ta kasa. Sake gwadawa.",
+    "verifying": "Ana tabbatarwa...",
+    "verify": "Tabbatar"
   },
   "billing_history": {
     "title": "Tarihin Biyan Kuɗi",

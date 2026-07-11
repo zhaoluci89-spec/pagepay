@@ -11,7 +11,7 @@ from sqlalchemy import select, insert
 from jose import JWTError, jwt
 from app.database import get_db
 from app.models import User, PasswordResetToken, RefreshToken
-from app.schemas import UserRegister, TokenResponse, UserMe, ChangePasswordRequest, ForgotPasswordRequest, ResetPasswordRequest, LegalPageResponse, EmailVerificationRequest, GoogleAuthRequest
+from app.schemas import UserRegister, TokenResponse, UserMe, ChangePasswordRequest, ForgotPasswordRequest, ResetPasswordRequest, LegalPageResponse, EmailVerificationRequest, EmailVerificationCodeRequest, GoogleAuthRequest
 from app.services.auth import hash_password, verify_password, create_access_token, create_refresh_token, get_current_user, revoke_jwt
 from app.services.sanitize import sanitize_for_log
 from app.services.email import send_verification_email, send_password_reset_email
@@ -99,19 +99,19 @@ async def register(payload: UserRegister, request: Request, db: AsyncSession = D
     await db.commit()
     await db.refresh(user)
 
-    # Generate email verification token
+    # Generate email verification token + 6-digit code
     verification_token = secrets.token_urlsafe(32)
+    verification_code = f"{secrets.randbelow(1_000_000):06d}"
     user.email_verification_token = bcrypt.hashpw(verification_token.encode(), bcrypt.gensalt(rounds=10)).decode()
+    user.email_verification_code = bcrypt.hashpw(verification_code.encode(), bcrypt.gensalt(rounds=10)).decode()
     user.email_verification_expires_at = datetime.utcnow() + timedelta(hours=24)
     await db.commit()
 
-    # Send verification email (non-blocking)
+    # Send verification email with code (non-blocking)
     try:
         if user.email:
-            await send_verification_email(user.email, verification_token)
+            await send_verification_email(user.email, verification_token, verification_code)
     except Exception as exc:
-        # `user.email` is user-controlled — sanitize before logging
-        # so a malicious email can't forge log lines.
         logger.error("Failed to send verification email to %s: %s", sanitize_for_log(user.email), exc)
 
     # Issue tokens
@@ -430,6 +430,41 @@ async def verify_email(payload: EmailVerificationRequest, db: AsyncSession = Dep
     return {"ok": True, "message": "Email verified successfully"}
 
 
+@router.post("/verify-email-code")
+async def verify_email_code(payload: EmailVerificationCodeRequest, db: AsyncSession = Depends(get_db)):
+    """Verify email address using a 6-digit code sent via email."""
+    query = select(User).where(User.email == payload.email, User.email_verified == False)  # noqa: E712
+    result = await db.execute(query)
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=400, detail="Invalid code or email already verified")
+
+    if not user.email_verification_code:
+        raise HTTPException(status_code=400, detail="No pending verification for this email")
+
+    if user.email_verification_expires_at < datetime.utcnow():
+        raise HTTPException(status_code=400, detail="Verification code expired. Request a new one.")
+
+    if not bcrypt.checkpw(payload.code.encode(), user.email_verification_code.encode()):
+        raise HTTPException(status_code=400, detail="Invalid verification code")
+
+    user.email_verified = True
+    user.email_verification_token = None
+    user.email_verification_code = None
+    user.email_verification_expires_at = None
+    await db.commit()
+
+    await log_user_action(
+        db,
+        user.id,
+        "email_verify",
+        metadata={"method": "code"},
+    )
+
+    logger.info("Email verified for user_id=%s via code", user.id)
+    return {"ok": True, "message": "Email verified successfully"}
+
+
 @router.post("/resend-verification")
 async def resend_verification(
     request: Request,
@@ -444,12 +479,14 @@ async def resend_verification(
         raise HTTPException(status_code=400, detail="Email already verified")
 
     verification_token = secrets.token_urlsafe(32)
+    verification_code = f"{secrets.randbelow(1_000_000):06d}"
     current_user.email_verification_token = bcrypt.hashpw(verification_token.encode(), bcrypt.gensalt(rounds=10)).decode()
+    current_user.email_verification_code = bcrypt.hashpw(verification_code.encode(), bcrypt.gensalt(rounds=10)).decode()
     current_user.email_verification_expires_at = datetime.utcnow() + timedelta(hours=24)
     await db.commit()
 
     try:
-        await send_verification_email(current_user.email, verification_token)
+        await send_verification_email(current_user.email, verification_token, verification_code)
     except Exception as exc:
         logger.error("Failed to resend verification email to %s: %s", sanitize_for_log(current_user.email), exc)
         raise HTTPException(status_code=500, detail="Failed to send verification email")

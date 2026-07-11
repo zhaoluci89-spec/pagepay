@@ -7,7 +7,7 @@ import { BarChart } from '@/shared/components/BarChart';
 import { ShimmerLoader } from '@/shared/components/ShimmerLoader';
 import { Container } from '@/shared/components/Container';
 import { useLayoutContext } from '@/shared/components/Layout';
-import { usePlatformConfig } from '@/src/shared/hooks/use-platform-config';
+import { usePlatformConfig } from '@/shared/hooks/use-platform-config';
 
 function formatNgn(kobo: number = 0) {
   return `₦${(kobo / 100).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -164,13 +164,15 @@ export function DashboardPage() {
                   <h3 className="text-sm font-semibold text-text-main">Daily Active Users</h3>
                   <p className="mt-0.5 text-sm text-text-muted">Last 7 days</p>
                 </div>
-            <div className="p-4 sm:p-6">
-              {dauLoading && <ShimmerLoader lines={4} />}
-              {!dauLoading && dau.length > 0 && (
-                <BarChart data={dau} height={300} />
-              )}
-            </div>
-          </Card>
+                <div className="p-4 sm:p-6">
+                  {dauLoading && <ShimmerLoader lines={4} />}
+                  {!dauLoading && dau.length > 0 && (
+                    <BarChart data={dau} height={300} />
+                  )}
+                </div>
+              </Card>
+            </>
+          )}
         </div>
       </Container>
     </>

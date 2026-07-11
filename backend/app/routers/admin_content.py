@@ -108,26 +108,30 @@ async def admin_refresh_catalog(
     were imported, how many parents were re-sliced, total child slices.
     This can take 10–30s on Render free tier.
     """
-    imported = await import_gutendex(db, limit=20, start_page=1)
-    reslice_summary = await force_reslice_all(db)
+    try:
+        imported = await import_gutendex(db, limit=20, start_page=1)
+        reslice_summary = await force_reslice_all(db)
 
-    db.add(
-        _log_admin_action(
-            current_admin.id,
-            current_admin.email,
-            "refresh_catalog",
-            "content",
-            None,
-            {"imported": imported, "resliced": str(reslice_summary)},
-            request.client.host,
+        db.add(
+            _log_admin_action(
+                current_admin.id,
+                current_admin.email,
+                "refresh_catalog",
+                "content",
+                None,
+                {"imported": imported, "resliced": str(reslice_summary)},
+                request.client.host,
+            )
         )
-    )
-    await db.commit()
+        await db.commit()
 
-    return {
-        "imported": imported,
-        "resliced": reslice_summary,
-    }
+        return {
+            "imported": imported,
+            "resliced": reslice_summary,
+        }
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Content refresh failed: %s", exc)
+        raise HTTPException(status_code=500, detail=f"Content refresh failed: {exc}") from exc
 
 
 @router.delete("/{content_id}")

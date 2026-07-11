@@ -1264,6 +1264,12 @@ class EmailVerificationRequest(BaseModel):
     token: str
 
 
+class EmailVerificationCodeRequest(BaseModel):
+    """Verify email address with a 6-digit code."""
+    email: str
+    code: str
+
+
 class LegalPageResponse(BaseModel):
     """Static legal page content."""
     slug: str
