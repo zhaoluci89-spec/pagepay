@@ -388,7 +388,7 @@ async def reset_password(
         db,
         user.id,
         "password_reset",
-        metadata={"method": "token"},
+        extra_data={"method": "token"},
     )
 
     logger.info("Password reset completed for user_id=%s", user.id)
@@ -423,7 +423,7 @@ async def verify_email(payload: EmailVerificationRequest, db: AsyncSession = Dep
         db,
         user.id,
         "email_verify",
-        metadata={"method": "token"},
+        extra_data={"method": "token"},
     )
 
     logger.info("Email verified for user_id=%s", user.id)
@@ -458,7 +458,7 @@ async def verify_email_code(payload: EmailVerificationCodeRequest, db: AsyncSess
         db,
         user.id,
         "email_verify",
-        metadata={"method": "code"},
+        extra_data={"method": "code"},
     )
 
     logger.info("Email verified for user_id=%s via code", user.id)
