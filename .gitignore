@@ -32,6 +32,8 @@ credentials.json
 !app.json
 !.vscode/*.json
 !client/src/lib/locales/*.json
+!google-services.json
+!**/google-services.json
 pagepay-submit-*.json
 *-submit-*
 
