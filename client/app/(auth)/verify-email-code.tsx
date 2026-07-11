@@ -8,6 +8,8 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  NativeSyntheticEvent,
+  TextInputKeyPressEventData,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -24,63 +26,23 @@ type Props = {
   email?: string;
 };
 
+const OTP_LENGTH = 6;
+
 export default function VerifyEmailCodeScreen({ email }: Props) {
   const { t } = useTranslation();
   const router = useRouter();
   const scheme = useEffectiveScheme();
   const tokens = PagePay[scheme];
 
-  const [code, setCode] = useState(['', '', '', '', '', '']);
+  const [code, setCode] = useState<string[]>(() => Array(OTP_LENGTH).fill(''));
   const [sending, setSending] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const inputs = useRef<(TextInput | null)[]>([]);
 
-  const applyCode = useCallback((raw: string) => {
-    const digits = raw.replace(/[^0-9]/g, '').slice(0, 6);
-    const next = ['', '', '', '', '', ''];
-    for (let i = 0; i < digits.length && i < 6; i++) {
-      next[i] = digits[i];
-    }
-    setCode(next);
-    setError(null);
-    if (digits.length === 6) {
-      verifyCode(next.join(''));
-    } else if (digits.length > 0) {
-      inputs.current[Math.min(digits.length, 5)]?.focus();
-    }
-  }, [verifyCode]);
-
-  const handleChange = useCallback((index: number, value: string) => {
-    const digits = value.replace(/[^0-9]/g, '').slice(-1);
-    const next = [...code];
-    next[index] = digits;
-    setCode(next);
-    setError(null);
-
-    if (digits && index < 5) {
-      inputs.current[index + 1]?.focus();
-    }
-
-    const full = next.every((d) => d.length === 1);
-    if (full) {
-      verifyCode(next.join(''));
-    }
-  }, [code, verifyCode]);
-
-  const handlePaste = useCallback(async (index: number) => {
-    try {
-      const text = await Clipboard.getStringAsync();
-      if (!text) return;
-      applyCode(text);
-    } catch {
-      // clipboard not available
-    }
-  }, [applyCode]);
-
-  const verifyCode = useCallback(async (fullCode: string) => {
-    if (!email) return;
+  const submit = useCallback(async (fullCode: string) => {
+    if (!email || fullCode.length !== OTP_LENGTH) return;
     setVerifying(true);
     setError(null);
     try {
@@ -102,6 +64,82 @@ export default function VerifyEmailCodeScreen({ email }: Props) {
       setVerifying(false);
     }
   }, [email, router, t]);
+
+  const distributePaste = useCallback((raw: string, startIndex: number) => {
+    const digits = raw.replace(/[^0-9]/g, '').slice(0, OTP_LENGTH - startIndex);
+    if (!digits) return;
+
+    setCode((prev) => {
+      const next = [...prev];
+      for (let i = 0; i < digits.length; i++) {
+        next[startIndex + i] = digits[i];
+      }
+      return next;
+    });
+    setError(null);
+
+    const filledCount = Math.min(digits.length, OTP_LENGTH - startIndex);
+    const lastFilledIndex = startIndex + filledCount - 1;
+
+    if (startIndex + digits.length >= OTP_LENGTH) {
+      setTimeout(() => submit(code.join('')), 0);
+    } else if (filledCount > 0) {
+      setTimeout(() => inputs.current[lastFilledIndex + 1]?.focus(), 0);
+    }
+  }, [code, submit]);
+
+  const handleChange = useCallback((index: number, value: string) => {
+    const digits = value.replace(/[^0-9]/g, '').slice(-1);
+    if (!digits) return;
+
+    setCode((prev) => {
+      const next = [...prev];
+      next[index] = digits;
+      return next;
+    });
+    setError(null);
+
+    if (index < OTP_LENGTH - 1) {
+      setTimeout(() => inputs.current[index + 1]?.focus(), 0);
+    }
+
+    setTimeout(() => {
+      const full = code.every((d) => d.length === 1);
+      if (full) {
+        submit(code.join(''));
+      }
+    }, 0);
+  }, [code, submit]);
+
+  const handleKeyPress = useCallback((index: number, e: NativeSyntheticEvent<TextInputKeyPressEventData>) => {
+    if (e.nativeEvent.key !== 'Backspace') return;
+
+    setCode((prev) => {
+      if (prev[index].length === 1) {
+        const next = [...prev];
+        next[index] = '';
+        return next;
+      }
+      if (index > 0) {
+        const next = [...prev];
+        next[index - 1] = '';
+        setTimeout(() => inputs.current[index - 1]?.focus(), 0);
+        return next;
+      }
+      return prev;
+    });
+    setError(null);
+  }, []);
+
+  const handlePaste = useCallback(async (index: number) => {
+    try {
+      const text = await Clipboard.getStringAsync();
+      if (!text) return;
+      distributePaste(text, index);
+    } catch {
+      // clipboard not available
+    }
+  }, [distributePaste]);
 
   const handleResend = useCallback(async () => {
     setSending(true);
@@ -161,6 +199,7 @@ export default function VerifyEmailCodeScreen({ email }: Props) {
               ref={(ref) => { inputs.current[i] = ref; }}
               value={digit}
               onChangeText={(value) => handleChange(i, value)}
+              onKeyPress={(e) => handleKeyPress(i, e)}
               onPaste={() => handlePaste(i)}
               keyboardType="number-pad"
               maxLength={1}
@@ -178,7 +217,7 @@ export default function VerifyEmailCodeScreen({ email }: Props) {
         <View style={{ gap: 12, marginTop: 24 }}>
           <PrimaryButton
             title={verifying ? t('verify_email.verifying') : t('verify_email.verify')}
-            onPress={() => verifyCode(code.join(''))}
+            onPress={() => submit(code.join(''))}
             disabled={verifying || code.some((d) => d.length !== 1)}
           />
           <TouchableOpacity onPress={handleResend} disabled={sending}>
@@ -207,6 +246,7 @@ const styles = StyleSheet.create({
     paddingTop: 48,
     paddingBottom: 48,
     gap: 16,
+    alignItems: 'center',
   },
   iconWrap: {
     alignItems: 'center',
@@ -229,6 +269,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     padding: 12,
+    width: '100%',
   },
   bannerText: {
     fontSize: 13,
@@ -239,7 +280,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 10,
     marginTop: 8,
-    paddingHorizontal: 16,
+    width: '100%',
+    paddingHorizontal: 8,
   },
   codeBox: {
     flex: 1,
