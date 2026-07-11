@@ -46,11 +46,13 @@ function useAuthGate() {
 
       if (!token) {
         if (!onboardingCompleted && !inOnboardingGroup) {
-          // First-launch user → onboarding.
           router.replace('/(onboarding)');
         } else if (onboardingCompleted && !inAuthGroup) {
           router.replace('/(auth)/');
         }
+      } else if (token && inAuthGroup && segments[1] !== 'verify-email-code') {
+        router.replace('/(tabs)');
+      }
         // else: already on /onboarding or /auth/* — leave alone.
       } else if (token && inAuthGroup) {
         // Have a token and currently on an auth screen → go to tabs.
