@@ -33,6 +33,101 @@ export function EmailVerificationGate() {
       const res = await apiFetch('/api/v1/auth/resend-verification', { method: 'POST' });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ detail: 'Failed to send' }));
+        Alert.alert('Error', err.detail || 'Could not send verification code');
+        return;
+      }
+      Alert.alert('Sent', 'Verification code sent. Check your inbox.');
+    } catch {
+      Alert.alert('Error', 'Network error. Try again.');
+    }
+  };
+
+  const handleVerifyNow = () => {
+    if (!userEmail) return;
+    router.replace({ pathname: '/(auth)/verify-email-code', params: { email: userEmail } });
+  };
+
+  if (isLoading) {
+    return (
+      <View style={[styles.root, { backgroundColor: tokens.paper }]}>
+        <Text style={[styles.title, { color: tokens.ink }]}>Loading...</Text>
+      </View>
+    );
+  }
+
+  if (emailVerified) {
+    return null;
+  }
+
+  return (
+    <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: tokens.paper }}>
+      <View style={styles.root}>
+        <View style={[styles.iconWrap, { backgroundColor: tokens.mintSoft }]}>
+          <Ionicons name="mail-outline" size={48} color={tokens.mint} />
+        </View>
+
+        <Text style={[styles.title, { color: tokens.ink, fontFamily: 'SpaceGrotesk_700Bold' }]}>
+          Verify your email
+        </Text>
+        <Text style={[styles.subtitle, { color: tokens.inkMuted }]}>
+          We sent a 6-digit verification code to{'\n'}
+          <Text style={{ fontWeight: '600', color: tokens.ink }}>{userEmail || 'your email'}</Text>
+        </Text>
+
+        <View style={{ gap: 12, marginTop: 32, width: '100%' }}>
+          <PrimaryButton title="Enter Code" onPress={handleVerifyNow} />
+          <TouchableOpacity onPress={handleResend}>
+            <Text style={[styles.resend, { color: tokens.mint }]}>
+              Resend code
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    gap: 16,
+  },
+  iconWrap: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  title: {
+    fontSize: 24,
+    textAlign: 'center',
+  },
+  subtitle: {
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'center',
+  },
+  resend: {
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center',
+    paddingVertical: 12,
+  },
+});
+
+  const userEmail = data?.email;
+  const emailVerified = data?.email_verified;
+
+  const handleResend = async () => {
+    try {
+      const res = await apiFetch('/api/v1/auth/resend-verification', { method: 'POST' });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: 'Failed to send' }));
         Alert.alert('Error', err.detail || 'Could not send verification email');
         return;
       }
