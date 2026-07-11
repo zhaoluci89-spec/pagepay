@@ -26,6 +26,7 @@ async def import_gutendex(
     """
     url = f"{settings.gutendex_base_url}/books"
     params: dict[str, int | str] = {"copyright": "false", "limit": min(limit, 32)}
+    headers = {"User-Agent": "PagePay/1.0 (+https://pagepay.app)"}
     imported_parents: list[ContentCatalog] = []
     MAX_BODY_BYTES = 60_000
 
@@ -33,8 +34,15 @@ async def import_gutendex(
         page = start_page
         while len(imported_parents) < limit:
             page_params = {**params, "page": page}
-            resp = await client.get(url, params=page_params)
-            resp.raise_for_status()
+            try:
+                resp = await client.get(url, params=page_params, headers=headers)
+                resp.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                import logging
+                logging.getLogger("uvicorn.error").warning(
+                    "Gutendex import failed on page %s: %s", page, exc
+                )
+                break
             data = resp.json()
             page_added = 0
             for item in data.get("results", []):

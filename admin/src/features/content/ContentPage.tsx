@@ -3,17 +3,20 @@ import { adminApi } from '@/lib/api';
 import type { ContentListResponse } from '@/lib/types';
 import { Trash2, RefreshCw } from 'lucide-react';
 import React, { useState } from 'react';
-import { Card, Badge, Button, Pagination, ShimmerLoader, Container, Tooltip } from '@/shared/components';
+import { Card, Badge, Button, Pagination, ShimmerLoader, Container, Tooltip, ConfirmModal } from '@/shared/components';
 import { TopHeader } from '@/shared/components/TopHeader';
 import { useLayoutContext } from '@/shared/components/Layout';
 import { Input } from '@/shared/components/Input';
 import { Select } from '@/shared/components/Select';
+import { useToast } from '@/shared/hooks/use-toast';
 
 export function ContentPage() {
   const { onMenuClick } = useLayoutContext();
+  const toast = useToast();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
+  const [deleteId, setDeleteId] = useState<number | null>(null);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['admin', 'content', { page, search, typeFilter }],
@@ -28,11 +31,14 @@ export function ContentPage() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
-      if (!confirm('Delete this content?')) return;
       await adminApi.delete(`/admin/content/${id}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'content'] });
+      toast.success('Content deleted successfully');
+    },
+    onError: () => {
+      toast.error('Failed to delete content. Please try again.');
     },
   });
 
@@ -42,11 +48,13 @@ export function ContentPage() {
       return data as { imported: number; resliced: any };
     },
     onSuccess: (result) => {
-      alert(`Imported ${result.imported} books.`);
+      toast.success(`Imported ${result.imported} books.`, {
+        description: `${result.resliced} parents re-sliced`,
+      });
       queryClient.invalidateQueries({ queryKey: ['admin', 'content'] });
     },
     onError: () => {
-      alert('Refresh failed. Check the backend logs.');
+      toast.error('Refresh failed. Check the backend logs.');
     },
   });
 
@@ -121,7 +129,7 @@ export function ContentPage() {
                       <td className="px-4 py-3 text-sm text-text-main">{new Date(item.created_at).toLocaleDateString()}</td>
                       <td className="px-4 py-3 text-sm text-text-main">
                         <Tooltip content="Delete this content" position="top">
-                          <Button size="sm" variant="danger" onClick={() => deleteMutation.mutate(item.id)}>
+                          <Button size="sm" variant="danger" onClick={() => setDeleteId(item.id)}>
                             <Trash2 size={14} /> Delete
                           </Button>
                         </Tooltip>
@@ -138,6 +146,22 @@ export function ContentPage() {
         )}
       </Card>
       </Container>
+
+      <ConfirmModal
+        isOpen={deleteId !== null}
+        onClose={() => setDeleteId(null)}
+        onConfirm={() => {
+          if (deleteId !== null) {
+            deleteMutation.mutate(deleteId);
+            setDeleteId(null);
+          }
+        }}
+        title="Delete Content"
+        message="Are you sure you want to delete this content? This action cannot be undone."
+        confirmText="Delete"
+        confirmVariant="error"
+        isLoading={deleteMutation.isPending}
+      />
     </>
   );
 }
