@@ -127,6 +127,7 @@ export default function Onboarding() {
         >
           {SCREEN_KEYS.map((key, i) => {
             const Hero = SCREEN_HEROES[i];
+            const isActive = i === active;
             return (
               <View key={i} style={[styles.page, { width: SCREEN_W }]}>
                 <OnboardingScreen
@@ -139,7 +140,7 @@ export default function Onboarding() {
                   onSkip={() => goTo(SCREEN_KEYS.length - 1)}
                   onPrimary={handlePrimary}
                 >
-                  <Hero />
+                  {isActive ? <Hero /> : null}
                 </OnboardingScreen>
               </View>
             );
