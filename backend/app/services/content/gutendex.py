@@ -29,78 +29,76 @@ async def import_gutendex(
     imported_parents: list[ContentCatalog] = []
     MAX_BODY_BYTES = 60_000
 
-    try:
-        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
-            page = start_page
-            while len(imported_parents) < limit:
-                page_params = {**params, "page": page}
-                resp = await client.get(url, params=page_params)
-                resp.raise_for_status()
-                data = resp.json()
-                page_added = 0
-                for item in data.get("results", []):
-                    formats = item.get("formats", {})
-                    source_url = (
-                        formats.get("text/plain; charset=utf-8")
-                        or formats.get("text/plain")
-                    )
-                    if not source_url:
-                        continue
-
-                    exists = await db.execute(
-                        select(ContentCatalog).where(ContentCatalog.source_url == source_url)
-                    )
-                    if exists.scalar_one_or_none():
-                        continue
-
-                    title = item.get("title", "Untitled")
-                    authors = ", ".join(a.get("name", "") for a in item.get("authors", []))
-                    category = ", ".join(item.get("bookshelves", [])[:2]) or "fiction"
-                    body_text = None
-
-                    try:
-                        txt_resp = await client.get(source_url, timeout=20, follow_redirects=True)
-                        txt_resp.raise_for_status()
-                        raw = txt_resp.content
-                        if len(raw) > MAX_BODY_BYTES:
-                            raw = raw[:MAX_BODY_BYTES]
-                        body_text = raw.decode("utf-8", errors="replace")
-                    except Exception:
-                        continue
-
-                    parent = ContentCatalog(
-                        title=title,
-                        content_type="book",
-                        category=category,
-                        source_url=source_url,
-                        body_text=body_text,
-                        author=authors,
-                    )
-                    db.add(parent)
-                    await db.flush()
-                    imported_parents.append(parent)
-                    page_added += 1
-                    if len(imported_parents) >= limit:
-                        break
-                if not data.get("next") or page_added == 0:
-                    break
-                page += 1
-
-        await db.commit()
-
-        sliced = 0
-        for parent in imported_parents:
-            try:
-                n = await slice_and_persist(db, parent)
-                if n > 0:
-                    sliced += 1
-            except Exception as exc:  # noqa: BLE001
-                import logging
-                logging.getLogger("uvicorn.error").warning(
-                    "Slicing failed for parent %s: %s", getattr(parent, "id", None), exc,
+    async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+        page = start_page
+        while len(imported_parents) < limit:
+            page_params = {**params, "page": page}
+            resp = await client.get(url, params=page_params)
+            resp.raise_for_status()
+            data = resp.json()
+            page_added = 0
+            for item in data.get("results", []):
+                formats = item.get("formats", {})
+                source_url = (
+                    formats.get("text/plain; charset=utf-8")
+                    or formats.get("text/plain")
                 )
-        return len(imported_parents)
-    except Exception as exc:  # noqa: BLE001
-        import logging
-        logging.getLogger("uvicorn.error").exception("Gutendex import failed: %s", exc)
-        raise
+                if not source_url:
+                    continue
+
+                exists = await db.execute(
+                    select(ContentCatalog).where(ContentCatalog.source_url == source_url)
+                )
+                if exists.scalar_one_or_none():
+                    continue
+
+                title = item.get("title", "Untitled")
+                authors = ", ".join(a.get("name", "") for a in item.get("authors", []))
+                category = ", ".join(item.get("bookshelves", [])[:2]) or "fiction"
+                body_text = None
+
+                try:
+                    txt_resp = await client.get(source_url, timeout=20, follow_redirects=True)
+                    txt_resp.raise_for_status()
+                    raw = txt_resp.content
+                    if len(raw) > MAX_BODY_BYTES:
+                        raw = raw[:MAX_BODY_BYTES]
+                    body_text = raw.decode("utf-8", errors="replace")
+                except Exception:
+                    continue
+
+                parent = ContentCatalog(
+                    title=title,
+                    content_type="book",
+                    category=category,
+                    source_url=source_url,
+                    body_text=body_text,
+                    author=authors,
+                )
+                db.add(parent)
+                await db.flush()
+                imported_parents.append(parent)
+                page_added += 1
+                if len(imported_parents) >= limit:
+                    break
+            if not data.get("next") or page_added == 0:
+                break
+            page += 1
+
+            # Commit after each page so partial progress survives failures.
+            await db.commit()
+
+    # Slice every freshly-imported parent outside the import loop so a
+    # slicing failure on one book doesn't roll back the import of the others.
+    sliced = 0
+    for parent in imported_parents:
+        try:
+            n = await slice_and_persist(db, parent)
+            if n > 0:
+                sliced += 1
+        except Exception as exc:  # noqa: BLE001
+            import logging
+            logging.getLogger("uvicorn.error").warning(
+                "Slicing failed for parent %s: %s", getattr(parent, "id", None), exc,
+            )
+    return len(imported_parents)

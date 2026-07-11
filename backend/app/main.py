@@ -40,9 +40,9 @@ processor_task = None
 async def _seed_in_background():
     """Run seeding in the background after app is ready.
 
-    This allows the API to start serving requests immediately,
-    then seeds the database asynchronously. Fixes Render connection
-    pool instability during deployment.
+    Seeds core app config, ad placements, AI provider health, streak
+    config, admin users, and initial content from Gutendex. Safe to
+    call repeatedly — idempotent SELECT-then-INSERT pattern.
     """
     try:
         async with AsyncSessionLocal() as session:
