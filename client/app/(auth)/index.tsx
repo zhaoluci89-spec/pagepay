@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { View, TouchableOpacity, Text, StyleSheet, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
+import { Ionicons } from '@expo/vector-icons';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -83,7 +84,7 @@ export default function AuthScreen() {
       <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
 
       <SafeAreaView style={{ flex: 1 }}>
-        <View style={{ flex: 1, paddingHorizontal: 16, paddingTop: 24 }}>
+        <View style={{ flex: 1, paddingHorizontal: 8, paddingTop: 24 }}>
           <AuthTabSwitch activeTab={activeTab} onTabChange={handleTabChange} />
 
           <Animated.View style={[{ flex: 1 }, contentStyle]}>
@@ -101,13 +102,14 @@ export default function AuthScreen() {
               <View style={[styles.dividerLine, { backgroundColor: tokens.border }]} />
             </View>
 
-            <TouchableOpacity
-              style={[styles.googleButton, { backgroundColor: tokens.card, borderColor: tokens.border }]}
-              onPress={handleGoogleSignIn}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.googleButtonText, { color: tokens.ink }]}>Continue with Google</Text>
-            </TouchableOpacity>
+             <TouchableOpacity
+               style={[styles.googleButton, { backgroundColor: tokens.card, borderColor: tokens.border }]}
+               onPress={handleGoogleSignIn}
+               activeOpacity={0.7}
+             >
+               <Ionicons name="logo-google" size={20} color={tokens.ink} />
+               <Text style={[styles.googleButtonText, { color: tokens.ink }]}>Continue with Google</Text>
+             </TouchableOpacity>
           </View>
         </View>
       </SafeAreaView>
@@ -119,6 +121,7 @@ const styles = StyleSheet.create({
   socialWrap: {
     gap: 12,
     marginBottom: 24,
+    paddingHorizontal: 8,
   },
   divider: {
     flexDirection: 'row',
@@ -138,10 +141,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
-    borderRadius: 12,
+    gap: 10,
+    borderRadius: 14,
     borderWidth: 1,
     paddingVertical: 14,
+    paddingHorizontal: 16,
   },
   googleButtonText: {
     fontSize: 15,

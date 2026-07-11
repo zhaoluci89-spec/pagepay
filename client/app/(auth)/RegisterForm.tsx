@@ -370,7 +370,7 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   scroll: {
     flexGrow: 1,
-    paddingHorizontal: 16,
+    paddingHorizontal: 8,
     paddingVertical: 24,
   },
   cardWrap: {
