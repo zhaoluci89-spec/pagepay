@@ -1,6 +1,6 @@
 """Change payout_accounts.account_number to Text for encrypted storage
 
-Revision ID: 008_encrypt_payout_account_number
+Revision ID: 008_encrypt_payout_acct
 Revises: 007_add_user_audit_logs
 Create Date: 2026-07-07 01:00:00.000000
 
@@ -11,7 +11,7 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision: str = '008_encrypt_payout_account_number'
+revision: str = '008_encrypt_payout_acct'
 down_revision: Union[str, None] = '007_add_user_audit_logs'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None

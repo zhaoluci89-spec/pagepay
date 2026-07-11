@@ -1,7 +1,7 @@
 """Adjust points conversion rate from 100 pts = ₦1 to 10 pts = ₦1
 
 Revision ID: 009_adjust_points_conversion_rate
-Revises: 008_encrypt_payout_account_number
+Revises: 008_encrypt_payout_acct
 Create Date: 2026-07-08 14:55:00.000000
 
 """
@@ -10,7 +10,7 @@ from alembic import op
 
 
 revision: str = '009_adjust_points_conversion_rate'
-down_revision: Union[str, None] = '008_encrypt_payout_account_number'
+down_revision: Union[str, None] = '008_encrypt_payout_acct'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
