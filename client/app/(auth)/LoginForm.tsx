@@ -30,7 +30,11 @@ import { useEffectiveScheme } from '@/src/shared/hooks/use-effective-scheme';
 
 type FieldErrors = Partial<Record<'email' | 'password', string>>;
 
-export default function LoginScreen() {
+type Props = {
+  onSwitchToRegister?: () => void;
+};
+
+export default function LoginScreen({ onSwitchToRegister }: Props) {
   const { t } = useTranslation();
   const router = useRouter();
   const scheme = useEffectiveScheme();
@@ -290,7 +294,7 @@ export default function LoginScreen() {
                     <Text style={[styles.tertiaryMuted, { color: tokens.inkMuted }]}>
                       {t('auth.login.new_to_pagepay')}
                     </Text>
-                    <Pressable onPress={() => router.push('/(auth)/register')} hitSlop={6}>
+                     <Pressable onPress={onSwitchToRegister} hitSlop={6}>
                       <Text style={[styles.tertiaryLink, { color: tokens.mint }]}>
                         {t('auth.login.create_account')}
                       </Text>

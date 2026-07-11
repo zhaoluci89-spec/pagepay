@@ -9,8 +9,8 @@ import Animated, {
   Easing,
 } from 'react-native-reanimated';
 
-import LoginScreen from './login';
-import RegisterScreen from './register';
+import LoginScreen from './LoginForm';
+import RegisterScreen from './RegisterForm';
 import { AuthTabSwitch, SuccessRedirect } from '@/components/animations';
 import { PagePay } from '@/constants/theme';
 import { useEffectiveScheme } from '@/src/shared/hooks/use-effective-scheme';
@@ -87,7 +87,11 @@ export default function AuthScreen() {
           <AuthTabSwitch activeTab={activeTab} onTabChange={handleTabChange} />
 
           <Animated.View style={[{ flex: 1 }, contentStyle]}>
-            {activeTab === 'login' ? <LoginScreen /> : <RegisterScreen />}
+            {activeTab === 'login' ? (
+              <LoginScreen onSwitchToRegister={() => handleTabChange('register')} />
+            ) : (
+              <RegisterScreen onSwitchToLogin={() => handleTabChange('login')} />
+            )}
           </Animated.View>
 
           <View style={styles.socialWrap}>

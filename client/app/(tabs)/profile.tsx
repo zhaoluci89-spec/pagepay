@@ -183,7 +183,7 @@ export default function ProfileScreen() {
     }
     await clearToken();
     qc.clear();
-    router.replace('/(auth)/login');
+      router.replace('/(auth)/');
   }, [qc, router]);
 
   const version =

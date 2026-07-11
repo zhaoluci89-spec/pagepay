@@ -49,8 +49,7 @@ function useAuthGate() {
           // First-launch user → onboarding.
           router.replace('/(onboarding)');
         } else if (onboardingCompleted && !inAuthGroup) {
-          // Returning user who finished onboarding → login.
-          router.replace('/(auth)/login');
+          router.replace('/(auth)/');
         }
         // else: already on /onboarding or /auth/* — leave alone.
       } else if (token && inAuthGroup) {
@@ -76,7 +75,7 @@ function useAuthGate() {
   useEffect(() => {
     setOnUnauthenticated(() => {
       if (segments[0] !== '(auth)' && segments[0] !== '(onboarding)') {
-        router.replace('/(auth)/login');
+        router.replace('/(auth)/');
       }
     });
   }, [router, segments]);

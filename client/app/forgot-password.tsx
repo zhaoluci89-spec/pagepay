@@ -75,7 +75,7 @@ export default function ForgotPasswordScreen() {
       if (data.dev_token) {
         router.replace({ pathname: '/reset-password', params: { token: data.dev_token } });
       } else {
-        setTimeout(() => router.replace('/(auth)/login'), 2000);
+        setTimeout(() => router.replace('/(auth)/'), 2000);
       }
     } catch {
       setFormError(t('forgot_password.errors.connection_error'));

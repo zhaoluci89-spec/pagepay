@@ -44,3 +44,6 @@ firebase-service-account.js!google-servon
 
 
 # postgresql://pagepay_db_user:PD1Ma3LaRBL0Zw7SrGGk9jOPlcnH3Ewf@dpg-d992ucu7r5hc73ampvv0-a/pagepay_db
+
+
+# help me check the auth screens, do i have login and register screen separate? am feeling there are 2 different login nd register screen, one just flash and the former one sill work, even the google registration method that was added am not seeing it, please investigate what is going on with the auth screens, is there duplocate, and report back to me

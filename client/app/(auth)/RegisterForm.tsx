@@ -47,7 +47,11 @@ function passwordStrength(p: string): number {
   return Math.min(4, score);
 }
 
-export default function RegisterScreen() {
+type Props = {
+  onSwitchToLogin?: () => void;
+};
+
+export default function RegisterScreen({ onSwitchToLogin }: Props) {
   const { t } = useTranslation();
   const router = useRouter();
   const scheme = useEffectiveScheme();
@@ -345,7 +349,7 @@ export default function RegisterScreen() {
                   <Text style={[styles.tertiaryMuted, { color: tokens.inkMuted }]}>
                     {t('auth.register.already_have_account')}
                   </Text>
-                  <Pressable onPress={() => router.back()} hitSlop={6}>
+                  <Pressable onPress={onSwitchToLogin} hitSlop={6}>
                     <Text style={[styles.tertiaryLink, { color: tokens.mint }]}>
                       {t('auth.register.sign_in_link')}
                     </Text>
