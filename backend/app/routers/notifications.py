@@ -76,16 +76,16 @@ async def get_notification_preferences(
 
     # Check if preferences exist
     query = select(
-        db.bind.execute.__self__.tables["user_notification_preferences"]
+        db.bind.metadata.tables["user_notification_preferences"]
     ).where(
-        db.bind.execute.__self__.tables["user_notification_preferences"].c.user_id == user_id
+        db.bind.metadata.tables["user_notification_preferences"].c.user_id == user_id
     )
     result = await db.execute(query)
     prefs = result.fetchone()
 
     if not prefs:
         # Create default preferences
-        insert_stmt = db.bind.execute.__self__.tables["user_notification_preferences"].insert().values(
+        insert_stmt = db.bind.metadata.tables["user_notification_preferences"].insert().values(
             user_id=user_id,
             push_enabled=True,
             study_reminders=True,
@@ -147,7 +147,7 @@ async def update_notification_preferences(
     # Upsert preferences
     from sqlalchemy.dialects.mysql import insert
 
-    table = db.bind.execute.__self__.tables["user_notification_preferences"]
+    table = db.bind.metadata.tables["user_notification_preferences"]
     stmt = insert(table).values(
         user_id=user_id,
         push_enabled=preferences.push_enabled,
@@ -191,7 +191,7 @@ async def register_fcm_token(
     user_id = current_user.id
 
     # Check if token already exists
-    table = db.bind.execute.__self__.tables["fcm_tokens"]
+    table = db.bind.metadata.tables["fcm_tokens"]
     query = select(table).where(table.c.token == token_req.token)
     result = await db.execute(query)
     existing = result.fetchone()
@@ -248,7 +248,7 @@ async def deregister_fcm_token(
     """
     user_id = current_user.id
 
-    table = db.bind.execute.__self__.tables["fcm_tokens"]
+    table = db.bind.metadata.tables["fcm_tokens"]
     stmt = (
         table.update()
         .where(table.c.token == token)
@@ -278,7 +278,7 @@ async def list_fcm_tokens(
     """
     user_id = current_user.id
 
-    table = db.bind.execute.__self__.tables["fcm_tokens"]
+    table = db.bind.metadata.tables["fcm_tokens"]
     query = select(table).where(
         table.c.user_id == user_id,
         table.c.is_active == True

@@ -63,7 +63,7 @@ async def send_push_notification(
         dict with success status and details
     """
     # Check user's notification preferences
-    prefs_table = db.bind.execute.__self__.tables["user_notification_preferences"]
+    prefs_table = db.bind.metadata.tables["user_notification_preferences"]
     prefs_query = select(prefs_table).where(prefs_table.c.user_id == user_id)
     prefs_result = await db.execute(prefs_query)
     prefs = prefs_result.fetchone()
@@ -90,7 +90,7 @@ async def send_push_notification(
                 return {"success": False, "reason": "quiet_hours"}
     
     # Get active FCM tokens for user
-    tokens_table = db.bind.execute.__self__.tables["fcm_tokens"]
+    tokens_table = db.bind.metadata.tables["fcm_tokens"]
     tokens_query = select(tokens_table).where(
         tokens_table.c.user_id == user_id,
         tokens_table.c.is_active == True
