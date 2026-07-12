@@ -1,15 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
-  TouchableOpacity,
   View,
-  NativeSyntheticEvent,
-  TextInputKeyPressEventData,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -17,6 +15,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
 import { apiFetch } from '@/src/shared/api/client';
+import { usePinInput } from '@/src/shared/hooks/use-pin-input';
 import { PagePay } from '@/constants/theme';
 import { useEffectiveScheme } from '@/src/shared/hooks/use-effective-scheme';
 import { PrimaryButton } from '@/components/PrimaryButton';
@@ -31,102 +30,42 @@ export default function VerifyEmailCodeScreen() {
   const scheme = useEffectiveScheme();
   const tokens = PagePay[scheme];
 
-  const [code, setCode] = useState<string[]>(() => Array(OTP_LENGTH).fill(''));
   const [sending, setSending] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const inputs = useRef<(TextInput | null)[]>([]);
-  const codeRef = useRef(code);
-  codeRef.current = code;
-
-  const submit = useCallback(async (fullCode: string) => {
-    if (!email || fullCode.length !== OTP_LENGTH) return;
-    setVerifying(true);
-    setError(null);
-    setMessage(null);
-    try {
-      const res = await apiFetch('/api/v1/auth/verify-email-code', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, code: fullCode }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        const detail = typeof data?.detail === 'string' ? data.detail : t('verify_email.error_generic');
-        setError(detail);
-      } else {
-        setMessage(t('verify_email.success'));
-        setTimeout(() => router.replace('/(tabs)'), 1200);
-      }
-    } catch {
-      setError(t('verify_email.error_connection'));
-    } finally {
-      setVerifying(false);
-    }
-  }, [email, router, t]);
-
-  const handleChange = useCallback((index: number, value: string) => {
-    const digits = value.replace(/[^0-9]/g, '');
-
-    setCode((prev) => {
-      const next = [...prev];
-
-      if (digits.length > 1) {
-        for (let i = 0; i < Math.min(digits.length, OTP_LENGTH); i++) {
-          next[i] = digits[i];
+  const { values: code, inputs, handleChange, reset } = usePinInput({
+    length: OTP_LENGTH,
+    onSubmit: async (fullCode) => {
+      if (!email || fullCode.length !== OTP_LENGTH) return;
+      setVerifying(true);
+      setError(null);
+      setMessage(null);
+      try {
+        const res = await apiFetch('/api/v1/auth/verify-email-code', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, code: fullCode }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          const detail = typeof data?.detail === 'string' ? data.detail : t('verify_email.error_generic');
+          setError(detail);
+        } else {
+          setMessage(t('verify_email.success'));
+          setTimeout(() => router.replace('/(tabs)'), 1200);
         }
-      } else if (digits.length === 1) {
-        next[index] = digits[0];
+      } catch {
+        setError(t('verify_email.error_connection'));
+      } finally {
+        setVerifying(false);
       }
+    },
+  });
 
-      return next;
-    });
-    setError(null);
-
-    if (digits.length > 1) {
-      const filledCount = Math.min(digits.length, OTP_LENGTH);
-      setTimeout(() => inputs.current[filledCount - 1]?.focus(), 0);
-
-      if (filledCount === OTP_LENGTH) {
-        setTimeout(() => {
-          const full = codeRef.current.join('');
-          if (full.length === OTP_LENGTH) {
-            submit(full);
-          }
-        }, 0);
-      }
-    } else if (digits.length === 1 && index < OTP_LENGTH - 1) {
-      setTimeout(() => inputs.current[index + 1]?.focus(), 0);
-    }
-
-    setTimeout(() => {
-      const full = codeRef.current.join('');
-      if (full.length === OTP_LENGTH) {
-        submit(full);
-      }
-    }, 0);
-  }, [submit]);
-
-  const handleKeyPress = useCallback((index: number, e: NativeSyntheticEvent<TextInputKeyPressEventData>) => {
-    if (e.nativeEvent.key !== 'Backspace') return;
-
-    setCode((prev) => {
-      if (prev[index].length === 1) {
-        const next = [...prev];
-        next[index] = '';
-        return next;
-      }
-      if (index > 0) {
-        const next = [...prev];
-        next[index - 1] = '';
-        setTimeout(() => inputs.current[index - 1]?.focus(), 0);
-        return next;
-      }
-      return prev;
-    });
-    setError(null);
-  }, []);
+  useEffect(() => {
+    reset();
+  }, [reset]);
 
   const handleResend = useCallback(async () => {
     setSending(true);
@@ -138,9 +77,9 @@ export default function VerifyEmailCodeScreen() {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        setError(typeof data?.detail === 'string' ? data.detail : t('verify_email.error_resend'));
+        setError(typeof data?.detail === 'string' ? data.detail : t('verify_email.resend_error'));
       } else {
-        setMessage(t('verify_email.success'));
+        setMessage(t('verify_email.resend_success'));
       }
     } catch {
       setError(t('verify_email.error_connection'));
@@ -149,144 +88,81 @@ export default function VerifyEmailCodeScreen() {
     }
   }, [t]);
 
-  useEffect(() => {
-    inputs.current[0]?.focus();
-  }, []);
-
   return (
-    <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: tokens.paper }}>
-      <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
-      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-        <View style={styles.iconWrap}>
-          <Text style={styles.icon}>🔒</Text>
-        </View>
+    <SafeAreaView style={[styles.root, { backgroundColor: tokens.paper }]}>
+      <StatusBar style="auto" />
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+        <ScrollView contentContainerStyle={styles.scroll}>
+          <Text style={[styles.title, { color: tokens.ink }]}>{t('verify_email.title')}</Text>
+          <Text style={[styles.subtitle, { color: tokens.inkMuted }]}>
+            {t('verify_email.subtitle', { email })}
+          </Text>
 
-        <Text style={[styles.title, { color: tokens.ink }]}>{t('verify_email.title')}</Text>
-        <Text style={[styles.subtitle, { color: tokens.inkMuted }]}>
-          {t('verify_email.code_subtitle')}{'\n'}
-          <Text style={{ fontWeight: '600', color: tokens.ink }}>{email || t('verify_email.your_email')}</Text>
-        </Text>
-
-        {error ? (
-          <View style={[styles.banner, { backgroundColor: tokens.signalSoft, borderColor: tokens.signal }]}>
-            <Text style={[styles.bannerText, { color: tokens.signal }]}>{error}</Text>
+          <View style={styles.codeRow}>
+            {code.map((digit, i) => (
+              <TextInput
+                key={i}
+                ref={(el) => { inputs.current[i] = el; }}
+                value={digit}
+                onChangeText={(v) => handleChange(i, v)}
+                keyboardType="number-pad"
+                maxLength={OTP_LENGTH}
+                textContentType="oneTimeCode"
+                autoComplete="sms-otp"
+                returnKeyType="done"
+                blurOnSubmit={false}
+                editable={!verifying}
+                selectTextOnFocus
+                style={[
+                  styles.codeBox,
+                  {
+                    color: tokens.ink,
+                    backgroundColor: tokens.card,
+                    borderColor: error ? '#ef4444' : tokens.mint,
+                  },
+                ]}
+              />
+            ))}
           </View>
-        ) : null}
 
-        {message ? (
-          <View style={[styles.banner, { backgroundColor: tokens.mintSoft, borderColor: tokens.mint }]}>
-            <Text style={[styles.bannerText, { color: tokens.mint }]}>{message}</Text>
-          </View>
-        ) : null}
+          {error ? <Text style={[styles.error, { color: '#ef4444' }]}>{error}</Text> : null}
+          {message ? <Text style={[styles.success, { color: tokens.mint }]}>{message}</Text> : null}
 
-        <View style={styles.codeRow}>
-          {code.map((digit, i) => (
-            <TextInput
-              key={i}
-              ref={(ref) => { inputs.current[i] = ref; }}
-              value={digit}
-              onChangeText={(value) => handleChange(i, value)}
-              onKeyPress={(e) => handleKeyPress(i, e)}
-              keyboardType="number-pad"
-              maxLength={i === 0 ? OTP_LENGTH : 1}
-              textContentType="oneTimeCode"
-              autoComplete="sms-otp"
-              editable={!verifying}
-              style={[
-                styles.codeBox,
-                { color: tokens.ink, borderColor: digit ? tokens.mint : tokens.border, backgroundColor: tokens.card },
-              ]}
-            />
-          ))}
-        </View>
-
-        <View style={{ gap: 12, marginTop: 24, width: '100%' }}>
           <PrimaryButton
-            title={verifying ? t('verify_email.verifying') : t('verify_email.verify')}
-            onPress={() => submit(codeRef.current.join(''))}
-            disabled={verifying || code.some((d) => d.length !== 1)}
+            title={verifying ? t('verify_email.verifying') : t('verify_email.submit')}
+            onPress={() => {}}
+            disabled={verifying || code.join('').length !== OTP_LENGTH}
+            style={{ marginTop: 24 }}
           />
-          <TouchableOpacity onPress={handleResend} disabled={sending}>
-            <Text style={[styles.resend, { color: tokens.mint }]}>
-              {sending ? t('verify_email.sending') : t('verify_email.resend')}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => router.replace('/(tabs)')}>
-            <Text style={[styles.hint, { color: tokens.inkMuted }]}>
-              {t('verify_email.later')}
-            </Text>
-          </TouchableOpacity>
-        </View>
 
-        <Text style={[styles.hint, { color: tokens.inkMuted }]}>
-          {t('verify_email.spam_hint')}
-        </Text>
-      </ScrollView>
+          <Pressable onPress={handleResend} disabled={sending} style={styles.resend}>
+            <Text style={[styles.resendText, { color: tokens.mint }]}>
+              {sending ? t('verify_email.resending') : t('verify_email.resend')}
+            </Text>
+          </Pressable>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  scroll: {
-    paddingHorizontal: 24,
-    paddingTop: 48,
-    paddingBottom: 48,
-    gap: 16,
-    alignItems: 'center',
-  },
-  iconWrap: {
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  icon: {
-    fontSize: 64,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
-  subtitle: {
-    fontSize: 14,
-    lineHeight: 20,
-    textAlign: 'center',
-  },
-  banner: {
-    borderRadius: 12,
-    borderWidth: 1,
-    padding: 12,
-    width: '100%',
-  },
-  bannerText: {
-    fontSize: 13,
-    textAlign: 'center',
-  },
-  codeRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 8,
-    marginTop: 8,
-    paddingHorizontal: 16,
-  },
+  root: { flex: 1 },
+  scroll: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
+  title: { fontFamily: 'SpaceGrotesk_700Bold', fontSize: 22, marginBottom: 8 },
+  subtitle: { fontFamily: 'SpaceGrotesk_500Medium', fontSize: 14, textAlign: 'center', marginBottom: 32 },
+  codeRow: { flexDirection: 'row', gap: 12, justifyContent: 'center' },
   codeBox: {
-    flex: 1,
-    maxWidth: 56,
-    height: 56,
-    borderRadius: 12,
+    width: 56,
+    height: 64,
+    borderRadius: 14,
     borderWidth: 2,
-    fontSize: 24,
-    fontWeight: '700',
-    textAlign: 'center',
-    padding: 0,
-  },
-  resend: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 28,
     textAlign: 'center',
   },
-  hint: {
-    fontSize: 12,
-    textAlign: 'center',
-    marginTop: 8,
-  },
+  error: { fontFamily: 'SpaceGrotesk_500Medium', fontSize: 13, marginTop: 12, textAlign: 'center' },
+  success: { fontFamily: 'SpaceGrotesk_500Medium', fontSize: 13, marginTop: 12, textAlign: 'center' },
+  resend: { marginTop: 24 },
+  resendText: { fontFamily: 'SpaceGrotesk_500Medium', fontSize: 14 },
 });

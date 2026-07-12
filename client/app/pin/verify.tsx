@@ -6,7 +6,6 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  TouchableOpacity,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -16,11 +15,10 @@ import { useTranslation } from 'react-i18next';
 
 import { apiFetch } from '@/src/shared/api/client';
 import { setPendingWithdrawAfterPin } from '@/src/shared/lib/pin-verify-flag';
+import { usePinInput } from '@/src/shared/hooks/use-pin-input';
 import { PagePay } from '@/constants/theme';
 import { useEffectiveScheme } from '@/src/shared/hooks/use-effective-scheme';
 import { PrimaryButton } from '@/components/PrimaryButton';
-
-const PIN_LENGTH = 4;
 
 type Mode = 'verify' | 'setup' | 'change';
 
@@ -33,16 +31,12 @@ export default function VerifyPinScreen() {
   const scheme = useEffectiveScheme();
   const tokens = PagePay[scheme];
 
-  const [pin, setPin] = useState<string[]>(() => Array(PIN_LENGTH).fill(''));
   const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const inputs = useRef<(TextInput | null)[]>([]);
-  const pinRef = useRef(pin);
-  pinRef.current = pin;
-
-  const submit = useCallback(
-    async (fullPin: string) => {
-      if (fullPin.length !== PIN_LENGTH) return;
+  const { values: pin, inputs, handleChange, handleKeyPress, reset } = usePinInput({
+    length: 4,
+    onSubmit: async (fullPin) => {
+      if (fullPin.length !== 4) return;
       setVerifying(true);
       setError(null);
       try {
@@ -82,46 +76,11 @@ export default function VerifyPinScreen() {
         setVerifying(false);
       }
     },
-    [mode, redirect, router, t],
-  );
-
-  const handleChange = useCallback((index: number, value: string) => {
-    const digits = value.replace(/[^0-9]/g, '');
-
-    setPin((prev) => {
-      const next = [...prev];
-      if (digits.length > 1) {
-        for (let i = 0; i < Math.min(digits.length, PIN_LENGTH); i++) {
-          next[i] = digits[i];
-        }
-      } else if (digits.length === 1) {
-        next[index] = digits[0];
-      }
-      return next;
-    });
-    setError(null);
-
-    if (digits.length > 1) {
-      const filledCount = Math.min(digits.length, PIN_LENGTH);
-      setTimeout(() => inputs.current[filledCount - 1]?.focus(), 0);
-    }
-  }, []);
-
-  const handleKeyPress = useCallback(
-    (index: number, e: any) => {
-      const nativeEvent = e as NativeSyntheticEvent<TextInputKeyPressEventData>;
-      if (nativeEvent.nativeEvent.key === 'Backspace' && pinRef.current[index] === '' && index > 0) {
-        inputs.current[index - 1]?.focus();
-      }
-    },
-    [],
-  );
+  });
 
   useEffect(() => {
-    if (pin.every((d) => d !== '') && pin.join('').length === PIN_LENGTH) {
-      submit(pin.join(''));
-    }
-  }, [pin, submit]);
+    reset();
+  }, [reset]);
 
   const title =
     mode === 'setup'
@@ -153,7 +112,7 @@ export default function VerifyPinScreen() {
                 onChangeText={(v) => handleChange(i, v)}
                 onKeyPress={(e) => handleKeyPress(i, e)}
                 keyboardType="number-pad"
-                maxLength={PIN_LENGTH}
+                maxLength={4}
                 textContentType="oneTimeCode"
                 autoComplete="sms-otp"
                 returnKeyType="done"
@@ -176,8 +135,8 @@ export default function VerifyPinScreen() {
 
           <PrimaryButton
             title={verifying ? t('pin.verifying', { defaultValue: 'Verifying...' }) : t('pin.submit', { defaultValue: 'Confirm' })}
-            onPress={() => submit(pin.join(''))}
-            disabled={verifying || pin.join('').length !== PIN_LENGTH}
+            onPress={() => {}}
+            disabled={verifying || pin.join('').length !== 4}
             style={{ marginTop: 24 }}
           />
         </ScrollView>

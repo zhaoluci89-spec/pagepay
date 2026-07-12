@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -14,6 +15,7 @@ import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
 import { apiFetch } from '@/src/shared/api/client';
+import { usePinInput } from '@/src/shared/hooks/use-pin-input';
 import { PagePay } from '@/constants/theme';
 import { useEffectiveScheme } from '@/src/shared/hooks/use-effective-scheme';
 import { PrimaryButton } from '@/components/PrimaryButton';
@@ -26,101 +28,24 @@ export default function ChangePinScreen() {
   const scheme = useEffectiveScheme();
   const tokens = PagePay[scheme];
 
-  const [currentPin, setCurrentPin] = useState<string[]>(() => Array(PIN_LENGTH).fill(''));
-  const [newPin, setNewPin] = useState<string[]>(() => Array(PIN_LENGTH).fill(''));
-  const [confirmPin, setConfirmPin] = useState<string[]>(() => Array(PIN_LENGTH).fill(''));
   const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const currentInputs = useRef<(TextInput | null)[]>([]);
-  const newInputs = useRef<(TextInput | null)[]>([]);
-  const confirmInputs = useRef<(TextInput | null)[]>([]);
-  const currentRef = useRef(currentPin);
-  currentRef.current = currentPin;
-  const newRef = useRef(newPin);
-  newRef.current = newPin;
-  const confirmRef = useRef(confirmPin);
-  confirmRef.current = confirmPin;
-
-  const handleCurrentChange = useCallback((index: number, value: string) => {
-    const digits = value.replace(/[^0-9]/g, '');
-    setCurrentPin((prev) => {
-      const next = [...prev];
-      if (digits.length > 1) {
-        for (let i = 0; i < Math.min(digits.length, PIN_LENGTH); i++) {
-          next[i] = digits[i];
-        }
-      } else if (digits.length === 1) {
-        next[index] = digits[0];
-      }
-      return next;
-    });
-    setError(null);
-    if (digits.length > 1) {
-      const filledCount = Math.min(digits.length, PIN_LENGTH);
-      setTimeout(() => newInputs.current[0]?.focus(), 0);
-    }
-  }, []);
-
-  const handleNewChange = useCallback((index: number, value: string) => {
-    const digits = value.replace(/[^0-9]/g, '');
-    setNewPin((prev) => {
-      const next = [...prev];
-      if (digits.length > 1) {
-        for (let i = 0; i < Math.min(digits.length, PIN_LENGTH); i++) {
-          next[i] = digits[i];
-        }
-      } else if (digits.length === 1) {
-        next[index] = digits[0];
-      }
-      return next;
-    });
-    setError(null);
-    if (digits.length > 1) {
-      const filledCount = Math.min(digits.length, PIN_LENGTH);
-      setTimeout(() => confirmInputs.current[0]?.focus(), 0);
-    }
-  }, []);
-
-  const handleConfirmChange = useCallback((index: number, value: string) => {
-    const digits = value.replace(/[^0-9]/g, '');
-    setConfirmPin((prev) => {
-      const next = [...prev];
-      if (digits.length > 1) {
-        for (let i = 0; i < Math.min(digits.length, PIN_LENGTH); i++) {
-          next[i] = digits[i];
-        }
-      } else if (digits.length === 1) {
-        next[index] = digits[0];
-      }
-      return next;
-    });
-    setError(null);
-  }, []);
-
-  const handleKeyPress = useCallback(
-    (index: number, field: 'current' | 'new' | 'confirm', e: any) => {
-      const nativeEvent = e as any;
-      if (nativeEvent.nativeEvent?.key === 'Backspace') {
-        const map = { current: currentRef, new: newRef, confirm: confirmRef };
-        const inputsMap = { current: currentInputs, new: newInputs, confirm: confirmInputs };
-        const current = map[field].current;
-        if (current[index] === '' && index > 0) {
-          inputsMap[field].current[index - 1]?.focus();
-        }
-      }
-    },
-    [],
-  );
-
-  useEffect(() => {
-    if (currentPin.every((d) => d !== '') && newPin.every((d) => d !== '') && confirmPin.every((d) => d !== '')) {
-      submit();
-    }
-  }, [currentPin, newPin, confirmPin]);
+  const { values: currentPin, inputs: currentInputs, handleChange: handleCurrentChange, reset: resetCurrent } = usePinInput({
+    length: PIN_LENGTH,
+    autoSubmit: false,
+  });
+  const { values: newPin, inputs: newInputs, handleChange: handleNewChange, reset: resetNew } = usePinInput({
+    length: PIN_LENGTH,
+    autoSubmit: false,
+  });
+  const { values: confirmPin, inputs: confirmInputs, handleChange: handleConfirmChange, reset: resetConfirm } = usePinInput({
+    length: PIN_LENGTH,
+    autoSubmit: false,
+  });
 
   const submit = useCallback(async () => {
     if (newPin.join('') !== confirmPin.join('')) {
-      setError(t('pin.mismatch', { defaultValue: 'New PINs do not match.' }));
+      Alert.alert(t('pin.error', { defaultValue: 'Error' }), t('pin.mismatch', { defaultValue: 'New PINs do not match.' }));
       return;
     }
     setVerifying(true);
@@ -133,12 +58,12 @@ export default function ChangePinScreen() {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        setError(typeof data?.detail === 'string' ? data.detail : t('pin.error_generic', { defaultValue: 'Failed to change PIN.' }));
+        Alert.alert(t('pin.error', { defaultValue: 'Error' }), typeof data?.detail === 'string' ? data.detail : t('pin.error_generic', { defaultValue: 'Failed to change PIN.' }));
       } else {
         router.back();
       }
     } catch {
-      setError(t('pin.error_connection', { defaultValue: 'Network error. Try again.' }));
+      Alert.alert(t('pin.error', { defaultValue: 'Error' }), t('pin.error_connection', { defaultValue: 'Network error. Try again.' }));
     } finally {
       setVerifying(false);
     }
@@ -159,7 +84,6 @@ export default function ChangePinScreen() {
                 ref={(el) => { currentInputs.current[i] = el; }}
                 value={digit}
                 onChangeText={(v) => handleCurrentChange(i, v)}
-                onKeyPress={(e) => handleKeyPress(i, 'current', e)}
                 keyboardType="number-pad"
                 maxLength={PIN_LENGTH}
                 textContentType="oneTimeCode"
@@ -180,7 +104,6 @@ export default function ChangePinScreen() {
                 ref={(el) => { newInputs.current[i] = el; }}
                 value={digit}
                 onChangeText={(v) => handleNewChange(i, v)}
-                onKeyPress={(e) => handleKeyPress(i, 'new', e)}
                 keyboardType="number-pad"
                 maxLength={PIN_LENGTH}
                 textContentType="oneTimeCode"
@@ -201,7 +124,6 @@ export default function ChangePinScreen() {
                 ref={(el) => { confirmInputs.current[i] = el; }}
                 value={digit}
                 onChangeText={(v) => handleConfirmChange(i, v)}
-                onKeyPress={(e) => handleKeyPress(i, 'confirm', e)}
                 keyboardType="number-pad"
                 maxLength={PIN_LENGTH}
                 textContentType="oneTimeCode"
@@ -213,8 +135,6 @@ export default function ChangePinScreen() {
               />
             ))}
           </View>
-
-          {error ? <Text style={[styles.error, { color: '#ef4444' }]}>{error}</Text> : null}
 
           <PrimaryButton
             title={verifying ? t('pin.changing', { defaultValue: 'Changing...' }) : t('pin.change_button', { defaultValue: 'Change PIN' })}
@@ -243,5 +163,4 @@ const styles = StyleSheet.create({
     fontSize: 28,
     textAlign: 'center',
   },
-  error: { fontFamily: 'SpaceGrotesk_500Medium', fontSize: 13, marginTop: 12, textAlign: 'center' },
 });

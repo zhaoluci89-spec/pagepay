@@ -7,7 +7,6 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  TouchableOpacity,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -16,6 +15,7 @@ import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
 import { apiFetch } from '@/src/shared/api/client';
+import { usePinInput } from '@/src/shared/hooks/use-pin-input';
 import { PagePay } from '@/constants/theme';
 import { useEffectiveScheme } from '@/src/shared/hooks/use-effective-scheme';
 import { PrimaryButton } from '@/components/PrimaryButton';
@@ -29,79 +29,24 @@ export default function SetupPinScreen() {
   const tokens = PagePay[scheme];
 
   const [password, setPassword] = useState('');
-  const [pin, setPin] = useState<string[]>(() => Array(PIN_LENGTH).fill(''));
-  const [confirmPin, setConfirmPin] = useState<string[]>(() => Array(PIN_LENGTH).fill(''));
   const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const pinInputs = useRef<(TextInput | null)[]>([]);
-  const confirmInputs = useRef<(TextInput | null)[]>([]);
-  const pinRef = useRef(pin);
-  pinRef.current = pin;
-  const confirmRef = useRef(confirmPin);
-  confirmRef.current = confirmPin;
-
-  const handlePinChange = useCallback((index: number, value: string) => {
-    const digits = value.replace(/[^0-9]/g, '');
-    setPin((prev) => {
-      const next = [...prev];
-      if (digits.length > 1) {
-        for (let i = 0; i < Math.min(digits.length, PIN_LENGTH); i++) {
-          next[i] = digits[i];
-        }
-      } else if (digits.length === 1) {
-        next[index] = digits[0];
-      }
-      return next;
-    });
-    setError(null);
-    if (digits.length > 1) {
-      const filledCount = Math.min(digits.length, PIN_LENGTH);
-      setTimeout(() => confirmInputs.current[0]?.focus(), 0);
-    }
-  }, []);
-
-  const handleConfirmChange = useCallback((index: number, value: string) => {
-    const digits = value.replace(/[^0-9]/g, '');
-    setConfirmPin((prev) => {
-      const next = [...prev];
-      if (digits.length > 1) {
-        for (let i = 0; i < Math.min(digits.length, PIN_LENGTH); i++) {
-          next[i] = digits[i];
-        }
-      } else if (digits.length === 1) {
-        next[index] = digits[0];
-      }
-      return next;
-    });
-    setError(null);
-  }, []);
-
-  const handleKeyPress = useCallback(
-    (index: number, isConfirm: boolean, e: any) => {
-      const nativeEvent = e as any;
-      if (nativeEvent.nativeEvent?.key === 'Backspace') {
-        const current = isConfirm ? confirmRef.current : pinRef.current;
-        if (current[index] === '' && index > 0) {
-          (isConfirm ? confirmInputs : pinInputs).current[index - 1]?.focus();
-        }
-      }
-    },
-    [],
-  );
-
-  useEffect(() => {
-    if (pin.every((d) => d !== '') && confirmPin.every((d) => d !== '') && pin.join('') === confirmPin.join('')) {
-      submit();
-    }
-  }, [pin, confirmPin]);
+  const { values: pin, inputs: pinInputs, handleChange: handlePinChange, reset: resetPin } = usePinInput({
+    length: PIN_LENGTH,
+    autoSubmit: false,
+  });
+  const { values: confirmPin, inputs: confirmInputs, handleChange: handleConfirmChange, reset: resetConfirm } = usePinInput({
+    length: PIN_LENGTH,
+    autoSubmit: false,
+  });
 
   const submit = useCallback(async () => {
     if (!password || password.length < 8) {
-      setError(t('pin.password_required', { defaultValue: 'Please enter your account password.' }));
+      Alert.alert(t('pin.error', { defaultValue: 'Error' }), t('pin.password_required', { defaultValue: 'Please enter your account password.' }));
       return;
     }
     if (pin.join('') !== confirmPin.join('')) {
-      setError(t('pin.mismatch', { defaultValue: 'PINs do not match.' }));
+      Alert.alert(t('pin.error', { defaultValue: 'Error' }), t('pin.mismatch', { defaultValue: 'PINs do not match.' }));
       return;
     }
     setVerifying(true);
@@ -114,12 +59,12 @@ export default function SetupPinScreen() {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        setError(typeof data?.detail === 'string' ? data.detail : t('pin.error_generic', { defaultValue: 'Failed to set PIN.' }));
+        Alert.alert(t('pin.error', { defaultValue: 'Error' }), typeof data?.detail === 'string' ? data.detail : t('pin.error_generic', { defaultValue: 'Failed to set PIN.' }));
       } else {
         router.back();
       }
     } catch {
-      setError(t('pin.error_connection', { defaultValue: 'Network error. Try again.' }));
+      Alert.alert(t('pin.error', { defaultValue: 'Error' }), t('pin.error_connection', { defaultValue: 'Network error. Try again.' }));
     } finally {
       setVerifying(false);
     }
@@ -153,7 +98,6 @@ export default function SetupPinScreen() {
                 ref={(el) => { pinInputs.current[i] = el; }}
                 value={digit}
                 onChangeText={(v) => handlePinChange(i, v)}
-                onKeyPress={(e) => handleKeyPress(i, false, e)}
                 keyboardType="number-pad"
                 maxLength={PIN_LENGTH}
                 textContentType="oneTimeCode"
@@ -174,7 +118,6 @@ export default function SetupPinScreen() {
                 ref={(el) => { confirmInputs.current[i] = el; }}
                 value={digit}
                 onChangeText={(v) => handleConfirmChange(i, v)}
-                onKeyPress={(e) => handleKeyPress(i, true, e)}
                 keyboardType="number-pad"
                 maxLength={PIN_LENGTH}
                 textContentType="oneTimeCode"
@@ -186,8 +129,6 @@ export default function SetupPinScreen() {
               />
             ))}
           </View>
-
-          {error ? <Text style={[styles.error, { color: '#ef4444' }]}>{error}</Text> : null}
 
           <PrimaryButton
             title={verifying ? t('pin.setting_up', { defaultValue: 'Setting up...' }) : t('pin.setup_button', { defaultValue: 'Set PIN' })}
@@ -226,5 +167,4 @@ const styles = StyleSheet.create({
     fontSize: 28,
     textAlign: 'center',
   },
-  error: { fontFamily: 'SpaceGrotesk_500Medium', fontSize: 13, marginTop: 12, textAlign: 'center' },
 });
