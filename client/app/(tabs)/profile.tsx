@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import Constants from 'expo-constants';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
@@ -144,6 +144,12 @@ export default function ProfileScreen() {
       return (await res.json()) as { has_pin: boolean };
     },
   });
+
+  useFocusEffect(
+    useCallback(() => {
+      qc.invalidateQueries({ queryKey: ['pin', 'status'] });
+    }, [qc]),
+  );
 
   const getTierLabel = (tier: string) => {
     const key = tier as 'free' | 'premium_monthly' | 'premium_yearly';

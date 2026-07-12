@@ -145,6 +145,12 @@ export default function WalletScreen() {
     },
   });
 
+  useFocusEffect(
+    useCallback(() => {
+      qc.invalidateQueries({ queryKey: ['pin', 'status'] });
+    }, [qc]),
+  );
+
   const withdrawalsQ = useQuery({
     queryKey: ['payouts', 'transactions'],
     queryFn: async () => {
