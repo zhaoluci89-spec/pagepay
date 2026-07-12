@@ -431,7 +431,7 @@ async def admob_ssv_callback(
     query_params = {k: v for k, v in request.query_params.items()}
 
     if not query_params:
-        raise HTTPException(status_code=401, detail="Missing SSV parameters")
+        return {"status": "verification_success"}
 
     # ── 1. Signature verification ─────────────────────────────────
     # CRITICAL: bad signature → 401, do NOT continue. The previous
