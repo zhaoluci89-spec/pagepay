@@ -32,7 +32,9 @@ function useAuthGate() {
   const segments = useSegments();
   const router = useRouter();
   const [isReady, setIsReady] = useState(false);
+  const [routeIntent, setRouteIntent] = useState<string | null>(null);
   const bioInProgressRef = useRef(false);
+  const gateRanRef = useRef(false);
   const { authenticate } = useBiometricAuth();
   const authenticateRef = useRef(authenticate);
   authenticateRef.current = authenticate;
@@ -40,7 +42,8 @@ function useAuthGate() {
   const hydrated = usePreferences((s) => s.hydrated);
 
   useEffect(() => {
-    if (!hydrated) return;
+    if (!hydrated || gateRanRef.current) return;
+    gateRanRef.current = true;
     let cancelled = false;
     bioInProgressRef.current = true;
 
@@ -50,11 +53,10 @@ function useAuthGate() {
       if (!token) {
         await clearLastRoute().catch(() => {});
         if (!onboardingCompleted) {
-          (router as any).replace('/(onboarding)');
+          setRouteIntent('/(onboarding)');
         } else {
-          (router as any).replace('/(auth)/');
+          setRouteIntent('/(auth)/');
         }
-        await new Promise((r) => setTimeout(r, 50));
         if (!cancelled) setIsReady(true);
         bioInProgressRef.current = false;
         return;
@@ -77,8 +79,7 @@ function useAuthGate() {
             });
             if (!result.success) {
               const lastRoute = await getLastRoute();
-              (router as any).replace('/pin/verify?mode=verify&redirect=' + (lastRoute || '/(tabs)'));
-              await new Promise((r) => setTimeout(r, 50));
+              setRouteIntent('/pin/verify?mode=verify&redirect=' + (lastRoute || '/(tabs)'));
               if (!cancelled) setIsReady(true);
               bioInProgressRef.current = false;
               return;
@@ -86,8 +87,7 @@ function useAuthGate() {
           }
         } catch {
           const lastRoute = await getLastRoute();
-          (router as any).replace('/pin/verify?mode=verify&redirect=' + (lastRoute || '/(tabs)'));
-          await new Promise((r) => setTimeout(r, 50));
+          setRouteIntent('/pin/verify?mode=verify&redirect=' + (lastRoute || '/(tabs)'));
           if (!cancelled) setIsReady(true);
           bioInProgressRef.current = false;
           return;
@@ -95,8 +95,7 @@ function useAuthGate() {
       }
 
       const lastRoute = await getLastRoute();
-      (router as any).replace(lastRoute || '/(tabs)');
-      await new Promise((r) => setTimeout(r, 50));
+      setRouteIntent(lastRoute || '/(tabs)');
       if (!cancelled) setIsReady(true);
       bioInProgressRef.current = false;
     })();
@@ -106,6 +105,14 @@ function useAuthGate() {
       bioInProgressRef.current = false;
     };
   }, [hydrated]);
+
+  // Apply route intent outside the gate — this keeps the gate from
+  // re-running when navigator state changes.
+  useEffect(() => {
+    if (!routeIntent) return;
+    (router as any).replace(routeIntent);
+    setRouteIntent(null);
+  }, [routeIntent, router]);
 
   // Persist current meaningful route — auth/onboarding/pin are never saved
   useEffect(() => {
@@ -133,8 +140,6 @@ function useAuthGate() {
       const nowActive = nextState === 'active';
       lastState = nextState;
       if (!wasInactive || !nowActive) return;
-
-      // Skip if cold-start biometric is already showing
       if (bioInProgressRef.current) return;
 
       try {
