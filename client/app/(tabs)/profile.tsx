@@ -87,7 +87,7 @@ export default function ProfileScreen() {
   const setLanguage = usePreferences((s) => s.setLanguage);
   const biometricEnabled = usePreferences((s) => s.biometricEnabled);
   const setBiometricEnabled = usePreferences((s) => s.setBiometricEnabled);
-  const { isSupported, isEnrolled } = useBiometricAuth();
+  const { isSupported, isEnrolled, authenticate } = useBiometricAuth();
 
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [showPayout, setShowPayout] = useState(false);
@@ -185,6 +185,18 @@ export default function ProfileScreen() {
         );
         return;
       }
+
+      if (next) {
+        const result = await authenticate();
+        if (!result.success) {
+          Alert.alert(
+            t('profile.biometric.failed_title', { defaultValue: 'Authentication Failed' }),
+            result.error || t('profile.biometric.failed_message', { defaultValue: 'Biometric authentication failed. Please try again.' }),
+          );
+          return;
+        }
+      }
+
       setBiometricEnabled(next);
       await import('@/src/shared/lib/preferences').then((m) =>
         m.persistBiometricEnabled(next),
@@ -193,7 +205,7 @@ export default function ProfileScreen() {
         Haptics.NotificationFeedbackType.Success,
       );
     },
-    [isSupported, isEnrolled, setBiometricEnabled, t],
+    [isSupported, isEnrolled, authenticate, setBiometricEnabled, t],
   );
 
   const handleSignOut = useCallback(async () => {
@@ -486,7 +498,6 @@ export default function ProfileScreen() {
                 thumbColor={biometricEnabled ? tokens.mintText : tokens.inkMuted}
               />
             }
-            onPress={() => handleBiometricToggle(!biometricEnabled)}
           />
         </View>
 

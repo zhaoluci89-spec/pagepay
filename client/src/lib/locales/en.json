@@ -70,7 +70,9 @@
     "biometric": {
       "title": "Biometric Login",
       "unavailable_title": "Biometric Unavailable",
-      "unavailable_message": "Biometric authentication is not set up on this device. Please add a fingerprint or face recognition in your device settings first."
+      "unavailable_message": "Biometric authentication is not set up on this device. Please add a fingerprint or face recognition in your device settings first.",
+      "failed_title": "Authentication Failed",
+      "failed_message": "Biometric authentication failed. Please try again."
     },
     "sign_out": "Sign out",
     "tier": {
