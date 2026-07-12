@@ -2,17 +2,18 @@
 
 **Duration:** Weeks 24–28
 **Agents:** Backend + Frontend
-**Goal:** Integrate Peyflex bills API for airtime, data, electricity, TV subscriptions. Users pay bills and earn 70% of provider commission in real-time.
+**Goal:** Integrate Peyflex bills API for airtime, data, electricity, TV subscriptions. Users pay bills and earn commission as points in real-time.
 
 ---
 
 ## Overview
 - **Provider**: Peyflex API (https://api.peyflex.com)
 - **Services**: Airtime (MTN/Airtel/GLO/9mobile), Data bundles, Electricity (AEDC/EKEDC/IKEDC/etc), TV (DSTV/GOtv/Startimes)
-- **Commission Model**: User earns 70% of provider commission, platform keeps 30%
+- **Commission Model**: User earns 70% of provider commission as points, platform keeps 30%
+  - NOTE: `config.py` has `bills_user_share=0.67` but `bills.py` hardcodes `_USER_SHARE=0.70`. The actual split used is 70/30.
 - **Pricing**: All prices fetched from Peyflex API in real-time (no hardcoded values)
 - **Payment**: Deducted from user's points balance (10 points = ₦1)
-- **Validation**: Phone numbers, meter numbers, smartcard numbers validated before purchase
+- **Validation**: Phone numbers, meter numbers, smartcard numbers have validation endpoints but these are NOT currently enforced before purchase. Users can purchase electricity/TV without prior validation.
 
 ---
 
@@ -103,7 +104,7 @@
   - Validations:
     - Meter: 10-13 digits
     - Amount: min ₦1,000 (100,000 kobo)
-    - Must validate meter first (enforce in UI)
+    - NOTE: meter validation endpoint exists but is NOT automatically enforced before purchase
   - Purchase via Peyflex
   - Peyflex returns electricity token in response
   - Credit 70% commission
@@ -122,7 +123,7 @@
   - Request: `{iuc_number, provider, plan_id}`
   - Validations:
     - IUC: 10+ digits
-    - Must validate smartcard first
+    - NOTE: smartcard validation endpoint exists but is NOT automatically enforced before purchase
   - Purchase via Peyflex
   - Credit 70% commission
   - Return transaction result
@@ -201,7 +202,7 @@
 - Real-time validation: show green checkmark when valid
 - Network detection: instant feedback as user types
 - Meter/smartcard validation: loading spinner → success (customer name) or error
-- Disable submit button until all validations pass
+- NOTE: Frontend can show validation UI, but backend does NOT enforce validation before purchase. Users can proceed without validating meter/smartcard.
 
 ---
 
@@ -226,7 +227,7 @@
 
 ## Implementation Notes
 1. **Commission varies by service**: Peyflex returns commission per transaction; don't hardcode rates
-2. **Validation is mandatory**: Always validate meter/smartcard before purchase to prevent failed transactions
+2. **Validation not enforced**: `validate-meter` and `validate-smartcard` endpoints exist but are NOT called by purchase endpoints. Backend currently allows purchase without prior validation.
 3. **Error messages**: Peyflex errors should be user-friendly, not raw API responses
 4. **Testing**: Use Peyflex sandbox/test mode during development
 5. **Rate limiting**: Implement per-user limits to prevent abuse (e.g., max 20 purchases/day)

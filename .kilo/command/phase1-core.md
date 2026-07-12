@@ -23,13 +23,14 @@
   mkdir -p routers models schemas services
   touch __init__.py main.py database.py
   ```
-- `requirements.txt`: `fastapi uvicorn[standard] gunicorn sqlalchemy[asyncio] asyncpg psycopg2-binary pydantic python-jose[cryptography] passlib[bcrypt] python-multipart aiofiles alembic httpx tenacity slowapi`
+- `requirements.txt`: `fastapi uvicorn[standard] gunicorn sqlalchemy[asyncio] asyncpg aio-mysql psycopg2-binary pydantic python-jose[cryptography] passlib[bcrypt] python-multipart aiofiles alembic httpx tenacity slowapi`
 - `requirements-dev.txt`: add `pytest pytest-asyncio pytest-cov`
 
 ### Step 2: Database Setup
 - Create `app/database.py`:
-  - `DATABASE_URL = "postgresql+asyncpg://user:pass@host:5432/pagepay"` (PostgreSQL 15, hosted on Render.app)
-  - `create_async_engine` with `pool_size=20, pool_recycle=1800, pool_pre_ping=True`
+  - `DATABASE_URL = "postgresql+asyncpg://user:pass@host:5432/pagepay"` for production (PostgreSQL 18 on Render)
+  - `create_async_engine` with `pool_size=20, pool_recycle=1800`
+  - `pool_pre_ping` defaults to `False`; set to `True` if stale-connection errors appear in production
   - `get_db` async generator with `AsyncSession`
 - Run `alembic init alembic` and configure `env.py` for async
 - Create initial migration with all models from `roadmap.md`:
@@ -95,10 +96,9 @@
   - Auth required
   - Request: `{session_id}`
   - Calculates `duration_seconds` from start/end time
-  - Validates `verified=true` (scroll events > threshold)
-  - Awards points: `points = (duration_seconds // 600) * 5`
-  - Updates `User.points_balance += points`
-  - Commit and return `{points_earned, new_balance}`
+  - Validates `verified=true` (scroll events > 0)
+  - Awards points: `points = max(0, (effective_duration // 600) * 5)` — floor division, as implemented
+  - Stages `pending_points` on the row for post-read ad claim
 
 ### Step 6: Dockerize
 - `Dockerfile` with multi-stage build (see devops agent spec)
@@ -116,7 +116,7 @@
 - Target: 80% coverage minimum
 
 ### Step 8: Deploy
-- Deploy backend to Render.app with PostgreSQL 15 database
+- Deploy backend to Render.app with PostgreSQL 18 database
 - Run migrations via `alembic upgrade head`
 - Verify health endpoint returns `{"status": "ok"}`
 - Store production DB URL in Render environment variables
@@ -138,10 +138,12 @@ npx expo install expo-dev-client  # Required for native modules in Phase 2+
 ```
 
 ### Step 2: Folder Structure
-- Create `app/` directory with `(auth)/`, `(tabs)/`, `reader/`
-- Create `src/features/` and `src/shared/`
+- Create `app/` directory with `(auth)/`, `(tabs)/`, `reader/`, `pin/`
+- Create `src/features/study/` and `src/shared/`
 - Set up `src/shared/api/client.ts` with base fetch wrapper + JWT interceptor
-- Set up `src/shared/lib/storage.ts` with MMKV instance
+- Set up `src/shared/lib/storage.ts` with `expo-secure-store` helpers (NOT MMKV)
+- Set up `src/shared/lib/preferences.ts` for theme/language/biometric/onboarding state
+- NOTE: `src/shared/lib/constants.ts` does not exist yet; API_URL is currently inline in `client.ts`
 
 ### Step 3: API Client
 - `client.ts`:
@@ -154,7 +156,8 @@ npx expo install expo-dev-client  # Required for native modules in Phase 2+
 - Login screen (`app/(auth)/login.tsx`):
   - Email/phone + password fields
   - Login button → calls `POST /api/v1/auth/login`
-  - Store token in MMKV, navigate to `/(tabs)/`
+  - Store token in `expo-secure-store`, navigate to `/(tabs)/`
+  - Token + refresh token stored via `saveToken`/`saveRefreshToken`
   - Error display for invalid credentials
 - Register screen (`app/(auth)/register.tsx`):
   - Phone/email + password + confirm password
@@ -165,7 +168,8 @@ npx expo install expo-dev-client  # Required for native modules in Phase 2+
 - `app/(tabs)/_layout.tsx`: `<Tabs />` with 4 tabs (Home, Catalog, Study, Wallet)
 - Catalog screen (`app/(tabs)/catalog.tsx`):
   - `useQuery` to fetch `GET /api/v1/content/catalog`
-  - Render `FlashList` of book cards
+  - Render `ScrollView` of book cards + in-feed `NativeAdBanner` every 4th item
+  - `FlashList` is NOT currently used; consider migrating long feeds
   - Filter chips: Fiction | Non-Fiction | News | Classics
   - Pull-to-refresh
 - Book detail tap → navigate to `/reader/{id}`
@@ -181,7 +185,7 @@ npx expo install expo-dev-client  # Required for native modules in Phase 2+
   - Scroll listener: increment `scroll_events` counter
   - End session on unmount: `POST /api/v1/session/end`
   - Floating timer UI showing elapsed time and potential points
-  - "Read Check" modal every 5 articles: "Tap to continue earning"
+  - NOTE: >100px/30s scroll anti-cheat and "Read Check" modal every 5 articles are NOT implemented. Current approach: 1-minute read slices with 5k character chunks. Do not re-add these without explicit request.
 
 ### Step 7: Wallet Tab
 - `app/(tabs)/wallet.tsx`:

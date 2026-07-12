@@ -6,19 +6,19 @@ Diversify revenue beyond ads with direct user payments for premium subscriptions
 ## Backend Tasks
 
 ### 1. Payment Service (`app/services/subscription.py`)
-- [ ] Paystack initialization helper
-- [ ] Premium tier check helper: `is_premium(user)`
-- [ ] Subscription expiry checker
-- [ ] Tier benefit calculator (2x points, ad-free)
+- ✅ Paystack initialization helper
+- ✅ Premium tier check helper: `is_premium(user)`
+- ✅ Subscription expiry checker
+- ✅ Tier benefit calculator (2x points, ad-free)
 
 ### 2. Payment Router (`app/routers/payments.py`)
-- [ ] `POST /api/v1/payments/initiate` → Start Paystack checkout
-- [ ] `POST /api/v1/payments/paystack/webhook` → Handle payment confirmation
+- ✅ `POST /api/v1/payments/initiate` → Start Paystack checkout
+- ✅ `POST /api/v1/payments/paystack/webhook` → Handle payment confirmation (subscriptions)
 - [ ] `GET /api/v1/payments/history` → User's payment history
 - [ ] `GET /api/v1/payments/subscription` → Current subscription status
 
 ### 3. Subscription Management
-- [ ] Cron job to expire subscriptions
+- [ ] Cron job to expire subscriptions (daily loop in docker-compose exists but logic not verified)
 - [ ] Auto-revert to FREE tier when expired
 - [ ] Grace period logic (3 days)
 
@@ -29,17 +29,17 @@ Diversify revenue beyond ads with direct user payments for premium subscriptions
 
 ## Frontend Tasks
 
-### 1. Paywall Screen (`app/subscription/pricing.tsx`)
-- [ ] Two-column comparison (Free vs Premium)
+### 1. Paywall Screen (`app/(tabs)/wallet.tsx` → premium upsell modal)
+- ✅ Two-column comparison (Free vs Premium)
 - [ ] Feature list with checkmarks
 - [ ] Price display with monthly/yearly toggle
 - [ ] "Upgrade Now" CTA
 
 ### 2. Checkout Flow
-- [ ] Paystack Web SDK integration
-- [ ] `expo-web-browser` for hosted checkout
-- [ ] Success callback handler
-- [ ] Error handling + retry
+- ✅ Paystack Web SDK integration (hosted checkout)
+- ✅ `expo-web-browser` for hosted checkout
+- ✅ Success callback handler
+- ✅ Error handling + retry
 
 ### 3. Premium UI Indicators
 - [ ] Gold badge in profile
@@ -87,6 +87,6 @@ Use Paystack test cards:
 - [ ] Premium user bypasses unlock modals automatically
 - [ ] Reading points 2x for premium (verified in wallet)
 - [ ] Paystack webhook confirms payment + updates tier
-- [ ] Subscription expires → auto-revert to FREE
+- [ ] Subscription expires → auto-revert to FREE (cron exists but logic needs verification)
 - [ ] Billing history shows all transactions
 - [ ] Play Store update: "PagePay: Read, Study, Learn & Earn (Premium)"

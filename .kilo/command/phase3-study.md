@@ -42,19 +42,11 @@
   - JSON parsing failure → retry with stricter prompt, or ask user to re-upload
 
 ### Step 3: Asset Generation Endpoints
-- `POST /api/v1/study/generate/mcq`:
-  - Request: `{material_id, topic?, count: 5-20}`
-  - AI generates MCQ JSON: `{questions: [{question, options[], correct_index, explanation}]}`
-  - Save to `study_assets` table with `asset_type='mcq'`, `points_to_unlock=50`
-  - Return: questions without correct answers (locked until payment/ad)
-- `POST /api/v1/study/generate/flashcards`:
-  - Request: `{material_id, topic?, count: 10-30}`
-  - AI generates: `{cards: [{front, back}]}`
-  - Save to `study_assets` with `asset_type='flashcard'`, `points_to_unlock=50`
-- `POST /api/v1/study/generate/essay`:
-  - Request: `{material_id, topic?, count: 3-10}`
-  - AI generates: `{questions: ["essay prompt 1", ...]}`
-  - Save to `study_assets` with `asset_type='essay'`, `points_to_unlock=30`
+- `POST /api/v1/study/generate` (single endpoint, not `/mcq`, `/flashcards`, `/essay`):
+  - Request: `{material_id, topic?, count: 5-20, type: "mcq" | "flashcards" | "essay"}`
+  - AI generates content based on `type`
+  - Save to `study_assets` table with matching `asset_type`
+  - Return generated content without correct answers (locked until payment/ad)
 - `GET /api/v1/study/materials/{id}`:
   - Return material with all associated assets (questions shown, answers locked)
 - All generation endpoints use circuit breaker pattern for provider failover
@@ -90,21 +82,20 @@
 - Two buttons: "Camera" + "Upload File"
 - `expo-image-picker` for camera/gallery
 - `expo-document-picker` for PDF/text
-- On select: show progress indicator (Skia ring)
-- Send to `POST /api/v1/study/sow/upload`
+- On select: show progress indicator
+- Send to `POST /api/v1/study/generate` with `type: "outline"`
 - On success: show parsed preview (expandable topics)
 - Save `material_id` to list
 
 ### Step 3: Asset Browser
-- Material detail screen: expandable accordion
-  - MCQ section: `FlashList` of question cards
+- Material detail screen: tabs for MCQ / Flashcards / Essay
+  - MCQ section: list of question cards
     - Tap to select answer → instant feedback (correct/incorrect)
     - "Answer locked" state: show ad/paywall prompt
-  - Flashcard section: Reanimated tap-to-flip card
-  - Essay section: list of prompts + AI outline
+  - Flashcard section: tap-to-flip card
+  - Essay section: list of prompts
 - Unlock UI:
-  - `useRewardedAd` hook loads AppLovin rewarded
-  - After ad → calls `POST /api/v1/study/unlock` with `method: "ad"`
+  - After rewarded ad → calls `POST /api/v1/study/unlock` with `method: "ad"`
   - On points: deducts via API, shows result
 
 ### Step 4: Chat Interface

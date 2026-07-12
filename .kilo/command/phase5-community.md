@@ -99,7 +99,7 @@
 
 ### Step 2: Community Feed
 - New tab or section: `app/(tabs)/community.tsx`
-- `FlashList` of note cards with:
+- `ScrollView` of note cards with:
   - Title, author, course code, likes count
   - Timestamp: "2 days ago"
 - Filter chips at top: All | MY_COURSES | POPULAR | RECENT

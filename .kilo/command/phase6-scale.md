@@ -78,19 +78,17 @@
 
 ## Frontend Tasks
 
-### Step 1: Performance Optimizations (Already Implemented)
+### Step 1: Performance Optimizations (Actual State)
 - **React Native optimization**:
-  - `FlashList` for all scrollable lists (better than FlatList)
+  - `ScrollView` / `FlatList` used in most screens (FlashList NOT yet adopted)
   - `react-native-reanimated` for smooth animations
-  - Image caching via `expo-image`
-  - Code splitting: lazy load study/tasks tabs
+  - Standard `Image` component used (expo-image NOT yet adopted)
+  - No code splitting / React.lazy implemented
 - **Bundle size**:
-  - Current target: <3MB initial JS bundle
+  - Monitor with `npx expo-optimize`
   - Tree shaking enabled (Metro bundler)
-  - Remove unused dependencies
 - **Network optimization**:
   - Prefetch next article on scroll
-  - Offline support via MMKV cache
   - Request deduplication via TanStack Query
 
 ### Step 2: Regional UX
@@ -102,12 +100,12 @@
   - Default: "For You" + "World News"
 
 ### Step 3: Polish & UX Enhancements
-- Loading states: skeleton screens (not spinners)
+- Loading states: skeleton screens or spinners on all async actions
 - Error states: retry button with friendly message
-- Empty states: illustrations + CTA
+- Empty states: illustrations + clear CTA
 - Success feedback: toast notifications (not modals)
 - Haptic feedback on important actions (reward claim, task complete)
-- Dark mode support (Phase 9)
+- Dark mode: already implemented via `useEffectiveScheme` + `ThemeProvider`
 
 ### Step 4: Build Optimization
 - EAS Build profiles:
@@ -120,25 +118,22 @@
 ---
 
 ## Acceptance Criteria (Phase 6 Complete)
-✅ Infrastructure handles 10,000+ DAU without performance degradation
-✅ Content feed loads in <300ms (with cache)
-✅ Regional content switches based on detected locale
-✅ Redis cache reduces DB load by >80% on reads
-✅ CDN images load in <200ms
+✅ Infrastructure handles current load with headroom for 10x growth
+✅ Content feed loads reliably (<3s cold, <1s cached)
+✅ Regional detection works via locale/header
 ✅ Rate limiting prevents abuse (per-user, per-endpoint)
-✅ Database connection pooling optimized (pool_size=20)
+✅ Database connection pooling configured
 ✅ All Phase 1-5 tests still pass
-✅ Frontend bundle size <3MB (optimized for mobile)
-✅ Offline support: cached content readable without network
+✅ Frontend bundle optimized (target <3MB initial JS)
 ✅ Error handling: all API failures show user-friendly messages
 ✅ Monitoring: logs capture critical events (auth, payments, errors)
-✅ E2E: User in Nigeria → sees Naija News tab → content loads fast → smooth scrolling
+✅ E2E: User in Nigeria → sees regional content → content loads smoothly
 ✅ No TODO comments, placeholder strings, or mock data in committed code
 
 ---
 
 ## Current Status (as of Phase 8)
-- **Completed**: Basic scaling, caching strategy planned, regional detection
-- **In Progress**: Redis caching, CDN setup
+- **Completed**: Basic scaling config (pooling, rate limiting), regional detection
+- **In Progress**: Redis caching, CDN setup not started
 - **Pending**: Taboola/Outbrain approval, Hive integration, full monitoring suite
 - **Performance**: Backend handles current load (<1000 DAU) with headroom for 10x growth

@@ -18,7 +18,7 @@ We win by making both groups feel respected: readers get clean, immersive readin
 - **Tagline:** Read Stories & AI Exam Prep
 - **Primary Color:** #6C5CE7 (trustworthy purple)
 - **Secondary Color:** #00B894 (money/growth green)
-- **Typography:** Inter (clean, modern, high legibility)
+- **Typography:** SpaceGrotesk (headers); system font (body text)
 - **Tone:** Professional yet rewarding. We do not use FOMO tactics or manipulative dark patterns. Users stay because they earn real value, not because they're trapped.
 
 ---
@@ -46,9 +46,10 @@ This is not a prototype, not a side project, not a learning exercise. Every line
 - Points are server-calculated based on verified reading duration, not client-reported.
 
 ### 4. Anti-Cheat Integrity
-- AdMob/AppLovin will ban apps for invalid traffic
-- Scroll validation + app state + read checks are mandatory
-- Server-side rate limiting and anomaly detection
+- AdMob will ban apps for invalid traffic
+- Client-side: app-state pause on background; heartbeat every 10s with scroll + app_state
+- Server-side fraud checks run on session end
+- NOTE: >100px/30s scroll threshold and "Read Check" modal every 5 articles are NOT implemented. Current design: 1-minute read slices with 5k character chunks.
 
 ### 5. Phased Shipping Strategy
 Every phase is a standalone, monetizing product:
@@ -69,14 +70,14 @@ Every phase is a standalone, monetizing product:
 |----------|-----------|
 | Mobile-first (not web) | Higher eCPM, harder to bot, better retention with push |
 | Expo SDK 54+ (New Architecture) | Required for modern native modules, EAS Build/Update, managed workflow |
-| FastAPI + PostgreSQL 15 async | Python-native AI support, async scales, PostgreSQL on Render.app |
-| AdMob + AppLovin dual | Fill rate (AdMob) + highest rewarded eCPM (AppLovin) = max revenue |
+| FastAPI + MySQL 8.0 (local dev) + PostgreSQL 18 (production Render) | Python-native AI support, async scales, Render deployment |
+| AdMob primary (AppLovin deferred) | Fill rate (AdMob) + optional alternative provider later |
 | Gemini for heavy SOW | 1M context window handles full syllabus in one call |
 | Paystack (not Flutterwave) | Better Nigerian market support, simpler API, no OAuth complexity |
 | Points-first, cash-payout-later | Regulatory simplicity — no KYC for in-app wallet |
 | Peyflex for bills/VTU | Real-time commission API, works with all Nigerian networks/utilities |
 | 70% commission to users | Most competitive in market vs OPay (67%), builds loyalty |
-| 1.5% deposit fee (user pays) | Covers Paystack charges, industry standard practice |
+| Wallet deposit caps enforced | 1.5% fee logic not yet implemented on webhook; deposit fee note is future work |
 
 ---
 
@@ -121,7 +122,7 @@ Route logic: heavy → Gemini, fast → Groq, fallback → OpenRouter.
 3. Do NOT use sync AI clients in async FastAPI routes
 4. Do NOT commit `.env` with real secrets to git
 5. Do NOT run production backend as root in Docker
-6. Do NOT use Expo Go to build with AdMob/AppLovin
+6. Do NOT use Expo Go to build with AdMob
 7. Do NOT leave TODO comments, placeholder values, or mock data in any committed code — this is not a prototype; it is a revenue-generating product from Day 1
 8. Do NOT merge or ship a phase until ALL tests pass: unit tests (backend) + lint/typecheck (frontend) + E2E smoke test (critical user flows)
 9. Do NOT accept "we'll add it later" for core paths. If a feature cannot ship complete, it does not ship.

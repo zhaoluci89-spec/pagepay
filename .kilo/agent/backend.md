@@ -1,6 +1,6 @@
 # Backend Engineer Agent
 **Project:** PagePay — Read-to-Earn & AI Study Platform
-**Stack:** Python 3.11+, FastAPI, MySQL 8.0, SQLAlchemy 2.0 async, Docker
+**Stack:** Python 3.11+, FastAPI, MySQL 8.0 (local dev), PostgreSQL 18 (production on Render), SQLAlchemy 2.0 async, Alembic, Gunicorn + Uvicorn
 
 ---
 
@@ -10,13 +10,14 @@ Build, maintain, and evolve the PagePay backend API. Own database schema, API co
 ## Core Responsibilities
 
 ### 1. Database Layer
-- **Database:** PostgreSQL 15 on Render.app (NOT MySQL)
-- Use `asyncpg` driver with SQLAlchemy 2.0 async engine
+- **Database:** PostgreSQL 18 on Render.app (production); MySQL 8.0 in local Docker via `docker-compose.yml`
+- Use `asyncpg` driver with SQLAlchemy 2.0 async engine for Postgres; use `aiomysql` for local MySQL dev
 - All models inherit from `DeclarativeBase`
 - Use `Mapped` and `mapped_column` for typing (never raw `Column` without type)
 - Use `AsyncSession` injected via FastAPI `Depends(get_db)`
 - Always `await` session operations: `await db.execute()`, `await db.commit()`, `await db.refresh()`
 - Connection pooling: `pool_size=20, max_overflow=10, pool_recycle=1800`
+- `pool_pre_ping=False` currently; consider `True` for production stability if stale-connection errors appear
 - Migrations: use Alembic for schema changes in production
 
 ### 2. API Design Rules
@@ -37,10 +38,9 @@ Build, maintain, and evolve the PagePay backend API. Own database schema, API co
 
 ### 4. Reading Engine
 - Timer logic: client sends heartbeat every 10s
-- Server enforces: if >45s since last heartbeat → pause timer
-- Scroll validation: track `scroll_events` in DB; if zero for 3 consecutive heartbeats → pause
-- Points formula: `base_points = (duration_seconds / 600) * 5` (5 pts per 10 min)
-- Anti-cheat: flag users with >3 paused sessions in a row for admin review
+- Server pauses timer when `app_state == "background"`; resumes on foreground
+- Points formula: `base_points = max(0, (effective_duration // 600) * 5)` — uses floor division as implemented in `sessions.py:144`
+- Anti-cheat: calls `run_fraud_checks_on_session`; flag users with >3 paused sessions in a row for admin review
 
 ### 5. AI Router
 - Single endpoint: `POST /api/v1/ai/route`
@@ -55,27 +55,29 @@ Build, maintain, and evolve the PagePay backend API. Own database schema, API co
 
 ### 6. Ad SSV (Server-Side Verification)
 - Webhook endpoints:
-  - `POST /api/v1/ads/google/callback` (AdMob)
-  - `POST /api/v1/ads/applovin/callback` (AppLovin)
-- Verify signatures using provider SDKs
-- Idempotency: check `transaction_id` exists in `ad_events` before crediting
-- Only credit points after `watched_fully=true` and SSV confirms
+  - `GET /api/v1/ads/google/callback` (AdMob Server-Side Verification — AdMob uses GET in practice)
+  - `POST /api/v1/ads/applovin/callback` (AppLovin — returns 501, deferred for now)
+- Verify ECDSA P-256 signature using AdMob's published public keys (`verifier-keys.json`)
+  - Signed data is raw query string up to `&signature=`, preserving original parameter order
+  - Signature is base64url without standard padding
+- Idempotency: check `transaction_id` unique constraint before crediting
+- Credit points only after `watched_fully=true` and SSV confirms
 - Log all failures with reason for debugging
 
 ### 7. Payments & Wallet (Paystack)
 - **Wallet Deposits:**
-  - `POST /api/v1/wallet/deposit` → returns Paystack payment URL
-  - User pays: deposit amount + 1.5% processing fee (capped at ₦2,000)
-  - User receives: deposit amount in points (10 points = ₦1)
-  - Webhook: `POST /api/v1/payments/webhook` → credits wallet after payment
-  - Paystack signature verification required (HMAC-SHA512 with secret key)
-  
+  - `POST /api/v1/wallet/deposit` → returns Paystack checkout URL
+  - Minimum deposit: ₦500 (50,000 kobo)
+  - Points conversion: 10 points = ₦1
+  - NOTE: Webhook wallet credit after deposit is not yet implemented; `payments/paystack/webhook` currently only handles subscription tier upgrades
+  - Per-tx and 24h rolling deposit caps enforced before Paystack call
+   
 - **Withdrawals:**
   - `POST /api/v1/payouts/withdraw` → sends money to user's bank via Paystack Transfers
   - Fee tiers: ≤₦5k = ₦15, ≤₦50k = ₦35, >₦50k = ₦70
   - Minimum withdrawal: ₦1,000
   - Webhook: `POST /api/v1/payouts/webhook` → confirms transfer, handles failures
-  
+   
 - **Premium Subscriptions:**
   - `POST /api/v1/payments/initiate` → returns payment URL
   - Monthly: ₦500, Yearly: ₦5,000
@@ -90,12 +92,12 @@ Build, maintain, and evolve the PagePay backend API. Own database schema, API co
   - `GET /api/v1/bills/data/networks` → list networks
   - `GET /api/v1/bills/data/plans` → list plans for network
   - `POST /api/v1/bills/detect-network` → detect phone network from number
-  - `POST /api/v1/bills/validate-meter` → validate meter (Paystack API)
-  - `POST /api/v1/bills/validate-smartcard` → validate smartcard (Paystack API)
+  - `POST /api/v1/bills/validate-meter` → validate meter (exists but NOT automatically called before purchase)
+  - `POST /api/v1/bills/validate-smartcard` → validate smartcard (exists but NOT automatically called before purchase)
 
 - **Commission Model:**
-  - Real-time commission from Peyflex `discount` field
-  - User gets 70% of commission as points
+  - Real-time commission from Peyflex `discount` field in response
+  - User gets 70% of commission as points (hardcoded; config.py has `bills_user_share=0.67` but router uses `_USER_SHARE=0.70`)
   - Platform keeps 30%
   - All prices come from Peyflex API (no hardcoded fallbacks)
   
@@ -105,26 +107,24 @@ Build, maintain, and evolve the PagePay backend API. Own database schema, API co
   3. Extract commission from response
   4. Credit user 70% of commission back as points
   5. Record BillTransaction for audit
+- **Validation:** Meter/smartcard validation endpoints exist but are NOT enforced before purchase calls. Users can buy electricity/TV without prior validation.
 
-### 8. Testing Requirements
+### 9. Testing Requirements
 - Unit tests with `pytest` + `httpx.AsyncClient` (test FastAPI routes)
-- Database tests: use separate PostgreSQL test container
+- Database tests: use MySQL test container for local dev; production uses PostgreSQL 18 on Render
 - Mock external APIs (AI providers, ad webhooks, Paystack, Peyflex)
 - Coverage target: 80%+ for critical paths (auth, payments, bills, reading engine)
 - Never test against production AI providers (use sandbox keys or mock)
 - Test all bill purchase flows with Peyflex sandbox credentials
 
-### 9. Docker & Deployment
-- `Dockerfile` multi-stage build:
-  - Stage 1: `python:3.11-slim` (builder) — install dependencies
-  - Stage 2: `python:3.11-slim` (runner) — copy installed packages
-- `docker-compose.yml` for local dev (FastAPI + PostgreSQL)
-- Environment variables via `.env` file (never hardcode secrets)
+### 10. Docker & Deployment
+- `Dockerfile`: single-stage build using `python:3.11` (not multi-stage as originally spec'd)
+- `docker-compose.yml` for local dev: FastAPI + MySQL 8.0
+- Production: deployed on Render.app with PostgreSQL 18 (NOT Docker in production)
 - Health check: `/api/v1/health` returns 200 if DB reachable
-- Gunicorn + Uvicorn workers: `CMD ["gunicorn", "main:app", "-w", "4", "-k", "uvicorn.workers.UvicornWorker"]`
-- **Production:** Deployed on Render.app with auto-deploy from GitHub main branch
+- Gunicorn + Uvicorn workers: `CMD ["gunicorn", "app.main:app", "-w", "2", "-k", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:8000", "--timeout", "120", "--graceful-timeout", "30", "--keep-alive", "5"]`
 
-### 10. Code Style
+### 11. Code Style
 - Line length: 100
 - Imports: stdlib → third-party → local (sorted alphabetically within groups)
 - Type hints required for all function signatures

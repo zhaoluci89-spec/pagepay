@@ -1,6 +1,6 @@
 # Frontend Engineer Agent
 **Project:** PagePay — Read-to-Earn & AI Study Platform
-**Stack:** Expo SDK 55+, React Native 0.83, React 19.2, Expo Router, TypeScript
+**Stack:** Expo SDK 54+, React Native 0.83, React 19.2, Expo Router, TypeScript
 
 ---
 
@@ -24,58 +24,70 @@ Build, maintain, and evolve the PagePay mobile application. Own navigation, UI c
 app/
   (auth)/
     _layout.tsx
-    login.tsx
-    register.tsx
+    LoginForm.tsx
+    RegisterForm.tsx
   (tabs)/
     _layout.tsx
-    index.tsx          ← Home / Daily Feed
-    catalog.tsx        ← Book browser
-    study.tsx          ← Phase 3: AI Exam Prep
+    index.tsx
+    catalog.tsx
+    study.tsx
     wallet.tsx
+    profile.tsx
   reader/
-    [id].tsx           ← Dynamic: /reader/42
-  web/
-    _layout.tsx        ← Optional: web support
+    [id].tsx
+  pin/
+    verify.tsx
+    setup.tsx
+    change.tsx
+  sponsor/
+    register.tsx
+    kyc.tsx
+    dashboard.tsx
+    tasks/
+      create.tsx
+      [id].tsx
+  tasks/
+    [id].tsx
+    [id]/complete.tsx
+    profile.tsx
+    history.tsx
+  billing/
+    buy-airtime.tsx
+    buy-data.tsx
+    buy-electricity.tsx
+    buy-tv.tsx
+  forgot-password.tsx
+  reset-password.tsx
+  modal.tsx
 src/
-  features/
-    auth/
-      api.ts
-      components/
-      hooks/
-      types.ts
-      store.ts         ← Zustand store (if needed)
-    catalog/
-      api.ts
-      components/
-      hooks/
-    reader/
-      api.ts
-      components/
-      hooks/
-    study/
-      api.ts
-      components/
-      hooks/
-    wallet/
-      api.ts
-      components/
-      hooks/
   shared/
     api/
-      client.ts        ← Base fetch / axios instance with interceptor
-      types.ts
-    components/
-      ui/              ← Reusable: Button, Card, Input, etc.
-      ads/             ← Ad wrapper components
+      client.ts
     hooks/
-      use-read-check.ts
-      use-app-state.ts
+      use-biometric-auth.ts
+      use-ads-config.ts
+      use-effective-scheme.ts
     lib/
-      constants.ts     ← API base URL, ad unit IDs
-      utils.ts
-      storage.ts       ← MMKV helpers
-  app/
-    _layout.tsx        ← Root layout with providers
+      storage.ts
+      preferences.ts
+      screen-memory.ts
+      ads-native.ts
+      device-fingerprint.ts
+      display-name.ts
+      pin-verify-flag.ts
+    features/
+      study/
+        api.ts
+        spaced-repetition.ts
+        storage.ts
+components/
+  ads/
+    RewardedAd.tsx
+    NativeAdBanner.tsx
+    InterstitialAd.tsx
+    BannerAd.tsx
+  SplashOverlay.tsx
+  PrimaryButton.tsx
 ```
 
 ### 3. State Management
@@ -87,80 +99,60 @@ src/
   - Theme (light/dark)
   - Current reading progress
   - Ad loading state
-- Persistent state: `expo-secure-store` for auth tokens
+- Persistent state: `expo-secure-store` for auth tokens and route memory
+  - Preferences (theme, language, biometric toggle, onboarding flag) via custom `usePreferences` store backed by `expo-secure-store`
   - Never use `AsyncStorage` for sensitive data
 - Simple local state: `useState` / `useReducer`
 
 ### 4. Navigation (Expo Router)
 - File-based routing in `app/` directory
 - Tab navigator inside `(tabs)/_layout.tsx`
-- Stack navigator for nested flows (reader, paywall)
+- Stack navigator for nested flows (reader, paywall, tasks, sponsor)
 - Deep links auto-configured: `pagepay://reader/42`
 - Use `useRouter()` and `useLocalSearchParams()` for navigation
-- Lazy load screens with `React.lazy` where appropriate
+- Route persistence: last meaningful screen is saved to `expo-secure-store` and restored after auth gates (see `src/shared/lib/screen-memory.ts`)
 
 ### 5. TypeScript Rules
 - Strict mode enabled in `tsconfig.json`
 - All props interfaces explicitly typed
 - API responses typed via generated types or manual interfaces
 - Use `type` for unions/intersections, `interface` for objects
-- No `any` — use `unknown` with type guards if truly dynamic
+- Avoid `any`; some legacy areas use `as any` for Expo Router path typing — treat these as known tech debt
+- TODO: remove `as any` casts in `_layout.tsx`, `LoginForm.tsx`, `PrimaryButton.tsx`
 
 ### 6. Ad Integration (Dual Networks)
 **CRITICAL:** Must use `expo-dev-client`, NOT Expo Go.
 
-#### Required packages:
-```
-expo-ads-admob         (AdMob)
-react-native-google-mobile-ads  (AdMob JS SDK)
-react-native-applovin-max      (AppLovin JS SDK)
-@fumitakayamada/expo-applovin-max  (config plugin for native deps)
-```
+#### Current implementation:
+- AdMob initialized on app launch (`GoogleMobileAds().initialize()`)
+- Rewarded, interstitial, native ad components implemented for AdMob
+- AppLovin MAX: **deferred.** Not initialized, no adapter code. May switch to another provider later.
+- SSV flow: client requests token via `POST /api/v1/ads/request-token`, passes `custom_data` to AdMob, polls `/ads/recent-credits` for confirmation
 
-#### Initialization (app startup):
-```typescript
-// Initialize AdMob ( mediation backbone )
-import { GoogleMobileAds } from 'react-native-google-mobile-ads';
-GoogleMobileAds().initialize();
-
-// Initialize AppLovin (high eCPM rewarded)
-import { AppLovinMAX } from 'react-native-applovin-max';
-AppLovinMAX.initialize();
-```
-
-#### Ad placement rules:
-- **Native Advanced:** In-feed between articles (AdMob primary, styled to match typography)
-- **Interstitial:** After every 3 articles (alternate AdMob/AppLovin per session)
-- **Rewarded Video:** After article complete (AppLovin primary, AdMob fallback)
-- Both SDKs initialized on app launch for asset pre-caching
-
-#### SSV integration:
-- Never trust client-side reward callbacks
-- Server grants points only after SSV webhook confirms full watch
-- Adapter pattern: create `useRewardedAd` hook that handles both networks
+#### Future work:
+- Add AppLovin MAX or alternative provider initialization
+- Create `useRewardedAd` abstraction to swap networks without changing screens
+- Enforce Expo Go guard (ads silently fail in Expo Go)
 
 ### 7. Anti-Cheat Client Logic
 - `expo-app-state` to detect background/foreground transitions
 - Pause reading timer if `appState === 'background'`
-- `FlashList` / `FlatList` onScroll: track distance scrolled
-  - Must scroll >100px per 30s or timer pauses
-- Random "Read Check" modal every 5 articles
-  - Button: "Still Reading" — tap within 10s or pause
 - Send heartbeat to backend every 10s: `POST /api/v1/session/heartbeat`
   - Payload: `{ scroll_events: number, app_state: string }`
+- NOTE: >100px/30s scroll threshold and "Read Check" modal every 5 articles are NOT implemented. Current approach: 1-minute read slices with 5k character chunks. Do not re-add these checks without explicit request.
 
 ### 8. UI/UX Standards
 - Design system: consistent spacing (8px grid), border radius (8-16px)
-- Typography: Inter font family, sizes: 12/14/16/18/24/32
-- Colors: brand purple (#6C5CE7) primary, green (#00B894) for earnings
-- Dark mode: full support, persisted in MMKV
+- Typography: SpaceGrotesk font family (not Inter). Weights: 500/700 used; system font for body text.
+- Colors: brand purple (`PagePay.mint` ≈ green for earnings; theme tokens defined in `useEffectiveScheme`)
+- Dark mode: full support, persisted in `expo-secure-store` via `usePreferences`
 - Loading states: skeleton screens or spinners on all async actions
 - Error states: retry buttons, friendly messages
 - Empty states: illustrations + clear CTA
 
 ### 9. Performance Rules
-- Use `FlashList` (not FlatList) for long content feeds
-- Image optimization: `expo-image` with caching and blurhash
+- NOTE: `FlashList` is NOT currently used. Home/catalog use `ScrollView` + mapped `View`s; wallet uses `FlatList`. Consider migrating long feeds to `@shopify/flash-list`.
+- NOTE: `expo-image` is NOT currently installed. Standard `<Image>` is used everywhere. Migration to `expo-image` with caching + blurhash is pending.
 - Memoize components with `React.memo` and `useMemo`
 - Avoid inline functions in render props
 - Bundle size: monitor with `npx expo-optimize`
@@ -168,10 +160,10 @@ AppLovinMAX.initialize();
 
 ### 10. Testing & Quality
 - Unit: Jest + React Native Testing Library
-- E2E: Detox (critical flows: auth → read → earn → wallet)
 - Lint: ESLint with Expo plugin
 - Format: Prettier
 - Pre-commit hooks: Husky + lint-staged
+- NOTE: Detox E2E is planned but not yet implemented
 
 ## Deliverables per Phase
 - Phase 1: Auth screens, catalog, reader, wallet, anti-cheat
@@ -187,12 +179,11 @@ AppLovinMAX.initialize();
 - Do not write backend code (API routes, DB models) in this project — those are backend agent's responsibility
 - Do not modify `ios/` or `android/` folders directly — use config plugins
 - Do not use Expo Go for development with ads — must use `expo-dev-client` builds
-- Never hardcode API URLs — use `constants.ts`
-- **Production Only:** No `console.log` in production, no `// TODO` comments left in committed code, no fake/sample data in screens. If a backend endpoint is missing, show a proper error screen — never silently render empty lists.
+- API URL is currently inline in `client.ts`; TODO: create `src/shared/lib/constants.ts`
+- **Development:** `console.*` statements are present in many screens for active debugging; they must be `__DEV__`-guarded or removed before production release
 - **Test Gate:** Every phase blocked until:
   1. `npx tsc --noEmit` passes (zero type errors)
   2. `npx eslint .` passes (zero errors)
   3. `npx jest --coverage` passes with 80%+ on new code
-  4. Detox E2E smoke test passes: auth → read → ad → wallet update
-  5. App builds with EAS and installs on a real device without crashes
+  4. App builds with EAS and installs on a real device without crashes
 - **Revenue-first mindset:** Every screen is either a revenue event (ad shown, ad watched, points earned, premium purchased) or a retention funnel (content consumption, study engagement). If a screen does neither, remove it.
