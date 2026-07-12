@@ -306,7 +306,20 @@ async def refresh(request: Request, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=401, detail="Invalid refresh token")
 
     access_token = create_access_token(user.id)
-    return TokenResponse(access_token=access_token)
+    new_refresh_token_str = create_refresh_token()
+    new_refresh_token = RefreshToken(
+        user_id=user.id,
+        token_hash=_hash_refresh_token(new_refresh_token_str),
+        expires_at=datetime.utcnow() + timedelta(days=30),
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+        device_fingerprint=request.headers.get("x-device-fingerprint"),
+    )
+    token.revoked = True
+    db.add(new_refresh_token)
+    await db.commit()
+
+    return TokenResponse(access_token=access_token, refresh_token=new_refresh_token_str)
 
 
 @router.post("/forgot-password")
