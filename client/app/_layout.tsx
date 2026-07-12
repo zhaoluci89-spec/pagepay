@@ -29,10 +29,47 @@ function useAuthGate() {
   const segments = useSegments();
   const router = useRouter();
   const [isReady, setIsReady] = useState(false);
-  // Subscribe to onboarding state so we can route a first-launch user
-  // to /onboarding instead of /login.
   const onboardingCompleted = usePreferences((s) => s.onboardingCompleted);
   const hydrated = usePreferences((s) => s.hydrated);
+
+  // App-state listener: when the app returns from background, if
+  // biometric auth is enabled, prompt biometric immediately. If it
+  // fails, fall back to PIN verification.
+  useEffect(() => {
+    let lastState: AppStateStatus = AppState.currentState;
+
+    const handleAppStateChange = async (nextState: AppStateStatus) => {
+      const wasInactive = lastState === 'inactive';
+      const nowActive = nextState === 'active';
+      lastState = nextState;
+
+      if (!wasInactive || !nowActive) return;
+
+      const token = await getToken();
+      if (!token) return;
+
+      const prefs = usePreferences.getState();
+      if (!prefs.biometricEnabled) return;
+
+      try {
+        const { useBiometricAuth } = await import('@/src/shared/hooks/use-biometric-auth');
+        const { authenticate } = useBiometricAuth();
+        const result = await authenticate();
+        if (!result.success) {
+          const currentSegments = router.getRootState()?.routes || [];
+          const inAuth = currentSegments[0]?.name === '(auth)';
+          if (!inAuth) {
+            router.replace('/pin/verify?mode=verify&redirect=/');
+          }
+        }
+      } catch {
+        // Biometric module unavailable or error — fall back silently.
+      }
+    };
+
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+    return () => subscription.remove();
+  }, [router]);
 
   useEffect(() => {
     // Wait for the preferences store to hydrate from secure-store
@@ -149,45 +186,6 @@ export default function RootLayout() {
       if (cleanup) cleanup();
     };
   }, []);
-
-  // App-state listener: when the app returns from background, if
-  // biometric auth is enabled, prompt biometric immediately. If it
-  // fails, fall back to PIN verification.
-  useEffect(() => {
-    let lastState: AppStateStatus = AppState.currentState;
-
-    const handleAppStateChange = async (nextState: AppStateStatus) => {
-      const wasInactive = lastState === 'inactive';
-      const nowActive = nextState === 'active';
-      lastState = nextState;
-
-      if (!wasInactive || !nowActive) return;
-
-      const token = await getToken();
-      if (!token) return;
-
-      const prefs = usePreferences.getState();
-      if (!prefs.biometricEnabled) return;
-
-      try {
-        const { useBiometricAuth } = await import('@/src/shared/hooks/use-biometric-auth');
-        const { authenticate } = useBiometricAuth();
-        const result = await authenticate();
-        if (!result.success) {
-          const segments = router.getRootState()?.routes || [];
-          const inAuth = segments[0]?.name === '(auth)';
-          if (!inAuth) {
-            router.replace('/pin/verify?mode=verify&redirect=/');
-          }
-        }
-      } catch {
-        // Biometric module unavailable or error — fall back silently.
-      }
-    };
-
-    const subscription = AppState.addEventListener('change', handleAppStateChange);
-    return () => subscription.remove();
-  }, [router]);
 
   // Splash overlay state. Native splash (expo-splash-screen) shows first
   // as a static image while JS loads. Once fonts are loaded and auth is
