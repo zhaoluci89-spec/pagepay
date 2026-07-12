@@ -30,6 +30,7 @@ import {
 import { clearToken } from '@/src/shared/lib/storage';
 import { useBiometricAuth } from '@/src/shared/hooks/use-biometric-auth';
 import { registerFCMToken } from '@/src/lib/notifications';
+import { getLastRoute, saveLastRoute } from '@/src/shared/lib/screen-memory';
 import { PageMark } from '@/components/PageMark';
 import { AnimatedInput } from '@/components/AnimatedInput';
 import { PasswordToggle } from '@/components/Field';
@@ -103,8 +104,8 @@ export default function LoginScreen({ onSwitchToRegister }: Props) {
       
       await registerFCMToken();
       
-      setSuccess(true);
-      setTimeout(() => router.replace('/(tabs)'), 1000);
+      const lastRoute = await getLastRoute();
+      router.replace((lastRoute || '/(tabs)') as any);
     } catch {
       setFormError(t('auth.login.errors.connection_error'));
       setErrorTrigger(true);
@@ -181,11 +182,9 @@ export default function LoginScreen({ onSwitchToRegister }: Props) {
         await saveRefreshToken(data.refresh_token);
       }
       
-      // Register FCM token for push notifications
       await registerFCMToken();
-      
-      setSuccess(true);
-      setTimeout(() => router.replace('/(tabs)'), 1000);
+      const lastRoute = await getLastRoute();
+      router.replace((lastRoute || '/(tabs)') as any);
     } catch {
       setFormError(t('auth.login.errors.connection_error'));
       setErrorTrigger(true);

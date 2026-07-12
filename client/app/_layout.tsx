@@ -12,6 +12,7 @@ import { useEffectiveScheme } from '@/src/shared/hooks/use-effective-scheme';
 import { useAdsConfig } from '@/src/shared/hooks/use-ads-config';
 import { bootstrapPreferences, usePreferences } from '@/src/shared/lib/preferences';
 import { getToken } from '@/src/shared/lib/storage';
+import { getLastRoute, saveLastRoute, clearLastRoute } from '@/src/shared/lib/screen-memory';
 import { initializeAdMob } from '@/src/shared/lib/ads-native';
 import { setOnUnauthenticated } from '@/src/shared/api/client';
 import { setupNotificationListeners, registerFCMToken } from '@/src/lib/notifications';
@@ -30,12 +31,87 @@ function useAuthGate() {
   const segments = useSegments();
   const router = useRouter();
   const [isReady, setIsReady] = useState(false);
+  const [initialGateDone, setInitialGateDone] = useState(false);
   const onboardingCompleted = usePreferences((s) => s.onboardingCompleted);
   const hydrated = usePreferences((s) => s.hydrated);
 
-  // App-state listener: when the app returns from background, if
-  // biometric auth is enabled, prompt biometric immediately. If it
-  // fails, fall back to PIN verification.
+  // Cold-start gate: runs once when preferences hydration completes.
+  // Decides initial routing, biometric prompt, and lastRoute restore.
+  useEffect(() => {
+    if (!hydrated) return;
+    (async () => {
+      const token = await getToken();
+      const inAuthGroup = segments[0] === '(auth)';
+      const inOnboardingGroup = segments[0] === '(onboarding)';
+
+      if (!token) {
+        if (!onboardingCompleted && !inOnboardingGroup) {
+          await clearLastRoute().catch(() => {});
+          router.replace('/(onboarding)');
+        } else if (onboardingCompleted && !inAuthGroup) {
+          await clearLastRoute().catch(() => {});
+          router.replace('/(auth)/');
+        }
+      } else if (inAuthGroup && segments[1] !== 'verify-email-code') {
+        const prefs = usePreferences.getState();
+        if (prefs.biometricEnabled) {
+          try {
+            const supported = await LocalAuthentication.hasHardwareAsync();
+            const enrolled = await LocalAuthentication.isEnrolledAsync();
+            if (supported && enrolled) {
+              const result = await LocalAuthentication.authenticateAsync({
+                promptMessage: Platform.select({
+                  ios: 'Authenticate to access PagePay',
+                  android: 'Biometric authentication',
+                }),
+                fallbackLabel: 'Use passcode',
+                cancelLabel: 'Cancel',
+                disableDeviceFallback: false,
+              });
+              if (!result.success) {
+                router.replace('/pin/verify?mode=verify&redirect=/(tabs)');
+                await new Promise((r) => setTimeout(r, 50));
+                setIsReady(true);
+                setInitialGateDone(true);
+                return;
+              }
+            }
+          } catch {
+            // Biometric module unavailable — proceed with normal flow.
+          }
+        }
+        const lastRoute = await getLastRoute();
+        router.replace((lastRoute || '/(tabs)') as any);
+      }
+      // else: already on /onboarding, /auth/verify-email-code, or somewhere
+      // inside the app — leave alone.
+
+      await new Promise((r) => setTimeout(r, 50));
+      setIsReady(true);
+      setInitialGateDone(true);
+    })();
+  }, [hydrated]);
+
+  // Persist the current meaningful route whenever it changes, so the user
+  // can resume where they left off after background / cold-start.
+  useEffect(() => {
+    if (!hydrated || !initialGateDone) return;
+    (async () => {
+      const token = await getToken();
+      if (!token) return;
+      const inAuthGroup = segments[0] === '(auth)';
+      const inOnboardingGroup = segments[0] === '(onboarding)';
+      if (inAuthGroup || inOnboardingGroup) return;
+
+      const pathname = '/' + segments.join('/');
+      if (pathname && pathname !== '/') {
+        await saveLastRoute(pathname).catch(() => {});
+      }
+    })();
+  }, [hydrated, segments, initialGateDone]);
+
+  // App-state listener: persist the current route when the app
+  // backgrounds, then enforce biometric on resume.
   useEffect(() => {
     let lastState: AppStateStatus = AppState.currentState;
 
@@ -45,6 +121,13 @@ function useAuthGate() {
       lastState = nextState;
 
       if (!wasInactive || !nowActive) return;
+
+      try {
+        const pathname = '/' + segments.join('/');
+        await saveLastRoute(pathname).catch(() => {});
+      } catch {
+        // non-fatal
+      }
 
       const token = await getToken();
       if (!token) return;
@@ -70,63 +153,7 @@ function useAuthGate() {
 
     const subscription = AppState.addEventListener('change', handleAppStateChange);
     return () => subscription.remove();
-  }, [router]);
-
-  useEffect(() => {
-    // Wait for the preferences store to hydrate from secure-store
-    // before deciding where to send the user. Without this gate, a
-    // slow secure-store read on first launch would briefly route a
-    // returning user to /onboarding.
-    if (!hydrated) return;
-    (async () => {
-      const token = await getToken();
-      const inAuthGroup = segments[0] === '(auth)';
-      const inOnboardingGroup = segments[0] === '(onboarding)';
-
-      if (!token) {
-        if (!onboardingCompleted && !inOnboardingGroup) {
-          router.replace('/(onboarding)');
-        } else if (onboardingCompleted && !inAuthGroup) {
-          router.replace('/(auth)/');
-        }
-      } else if (inAuthGroup && segments[1] !== 'verify-email-code') {
-        const prefs = usePreferences.getState();
-        if (prefs.biometricEnabled) {
-          try {
-            const supported = await LocalAuthentication.hasHardwareAsync();
-            const enrolled = await LocalAuthentication.isEnrolledAsync();
-            if (supported && enrolled) {
-              const result = await LocalAuthentication.authenticateAsync({
-                promptMessage: Platform.select({
-                  ios: 'Authenticate to access PagePay',
-                  android: 'Biometric authentication',
-                }),
-                fallbackLabel: 'Use passcode',
-                cancelLabel: 'Cancel',
-                disableDeviceFallback: false,
-              });
-              if (!result.success) {
-                router.replace('/pin/verify?mode=verify&redirect=/(tabs)');
-                await new Promise((r) => setTimeout(r, 50));
-                setIsReady(true);
-                return;
-              }
-            }
-          } catch {
-            // Biometric module unavailable — proceed with normal flow.
-          }
-        }
-        router.replace('/(tabs)');
-      }
-      // else: already on /onboarding or /auth/* — leave alone.
-
-      // Small delay to let the scheduled navigation take effect before
-      // we allow the layout to render. Prevents a flash of the wrong
-      // screen when the initial route doesn't match the auth state.
-      await new Promise((r) => setTimeout(r, 50));
-      setIsReady(true);
-    })();
-  }, [hydrated, segments, router, onboardingCompleted]);
+  }, [router, segments]);
 
   // Register the global 401 → login redirect so apiFetch can
   // redirect the user when the server rejects their token.
