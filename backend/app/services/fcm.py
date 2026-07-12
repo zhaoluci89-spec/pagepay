@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.models import UserNotificationPreference, FCMToken
 
 logger = logging.getLogger(__name__)
 
@@ -63,41 +64,41 @@ async def send_push_notification(
         dict with success status and details
     """
     # Check user's notification preferences
-    prefs_table = db.bind.metadata.tables["user_notification_preferences"]
-    prefs_query = select(prefs_table).where(prefs_table.c.user_id == user_id)
-    prefs_result = await db.execute(prefs_query)
-    prefs = prefs_result.fetchone()
-    
+    result = await db.execute(
+        select(UserNotificationPreference).where(UserNotificationPreference.user_id == user_id)
+    )
+    prefs = result.scalar_one_or_none()
+
     # If no preferences, assume notifications enabled
     if prefs:
         # Check if push is globally disabled
         if not prefs.push_enabled:
             logger.info(f"Push notifications disabled for user {user_id}")
             return {"success": False, "reason": "push_disabled"}
-        
+
         # Check category-specific preference
         if category:
             category_enabled = getattr(prefs, category, True)
             if not category_enabled:
                 logger.info(f"{category} notifications disabled for user {user_id}")
                 return {"success": False, "reason": f"{category}_disabled"}
-        
+
         # Check quiet hours
         if prefs.quiet_hours_start and prefs.quiet_hours_end:
             now_time = datetime.utcnow().time()
             if is_in_quiet_hours(now_time, prefs.quiet_hours_start, prefs.quiet_hours_end):
                 logger.info(f"User {user_id} is in quiet hours")
                 return {"success": False, "reason": "quiet_hours"}
-    
+
     # Get active FCM tokens for user
-    tokens_table = db.bind.metadata.tables["fcm_tokens"]
-    tokens_query = select(tokens_table).where(
-        tokens_table.c.user_id == user_id,
-        tokens_table.c.is_active == True
+    result = await db.execute(
+        select(FCMToken).where(
+            FCMToken.user_id == user_id,
+            FCMToken.is_active == True,
+        )
     )
-    tokens_result = await db.execute(tokens_query)
-    tokens = tokens_result.fetchall()
-    
+    tokens = result.scalars().all()
+
     if not tokens:
         logger.warning(f"No active FCM tokens found for user {user_id}")
         return {"success": False, "reason": "no_tokens"}
@@ -112,8 +113,8 @@ async def send_push_notification(
     successful_sends = 0
     failed_tokens = []
     
-    for token_row in tokens:
-        token = token_row.token
+    for fcm_token in tokens:
+        token = fcm_token.token
         
         try:
             message = messaging.Message(
@@ -153,12 +154,11 @@ async def send_push_notification(
     
     # Deactivate failed tokens
     if failed_tokens:
-        update_stmt = (
-            tokens_table.update()
-            .where(tokens_table.c.token.in_(failed_tokens))
+        await db.execute(
+            update(FCMToken)
+            .where(FCMToken.token.in_(failed_tokens))
             .values(is_active=False, updated_at=datetime.utcnow())
         )
-        await db.execute(update_stmt)
         await db.commit()
     
     return {

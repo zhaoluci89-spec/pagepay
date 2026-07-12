@@ -1136,9 +1136,38 @@ class UserAuditLog(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
-    action: Mapped[str] = mapped_column(String(50), index=True, nullable=False)  # login | logout | password_change | password_reset | email_verify | account_banned
+    action: Mapped[str] = mapped_column(String(50), index=True, nullable=False)
     ip_address: Mapped[str | None] = mapped_column(String(45), nullable=True)
     user_agent: Mapped[str | None] = mapped_column(String(255), nullable=True)
     device_fingerprint: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
-    extra_data: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON string for extra data
+    extra_data: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
+class UserNotificationPreference(Base):
+    __tablename__ = "user_notification_preferences"
+
+    user_id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    push_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    study_reminders: Mapped[bool] = mapped_column(Boolean, default=True)
+    task_alerts: Mapped[bool] = mapped_column(Boolean, default=True)
+    referral_bonuses: Mapped[bool] = mapped_column(Boolean, default=True)
+    wallet_updates: Mapped[bool] = mapped_column(Boolean, default=True)
+    ad_rewards: Mapped[bool] = mapped_column(Boolean, default=True)
+    quiet_hours_start: Mapped[time | None] = mapped_column(Time, nullable=True)
+    quiet_hours_end: Mapped[time | None] = mapped_column(Time, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class FCMToken(Base):
+    __tablename__ = "fcm_tokens"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, index=True, nullable=False)
+    token: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
+    platform: Mapped[str] = mapped_column(String(20), nullable=False)
+    device_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

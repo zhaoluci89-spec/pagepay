@@ -6,11 +6,11 @@ from datetime import datetime, time
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select, delete
+from sqlalchemy import select, insert, update, delete as sqla_delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models import User
+from app.models import User, UserNotificationPreference, FCMToken
 from app.routers.auth import get_current_user
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
@@ -74,18 +74,13 @@ async def get_notification_preferences(
     """
     user_id = current_user.id
 
-    # Check if preferences exist
-    query = select(
-        db.bind.metadata.tables["user_notification_preferences"]
-    ).where(
-        db.bind.metadata.tables["user_notification_preferences"].c.user_id == user_id
+    result = await db.execute(
+        select(UserNotificationPreference).where(UserNotificationPreference.user_id == user_id)
     )
-    result = await db.execute(query)
-    prefs = result.fetchone()
+    prefs = result.scalar_one_or_none()
 
     if not prefs:
-        # Create default preferences
-        insert_stmt = db.bind.metadata.tables["user_notification_preferences"].insert().values(
+        prefs = UserNotificationPreference(
             user_id=user_id,
             push_enabled=True,
             study_reminders=True,
@@ -94,21 +89,11 @@ async def get_notification_preferences(
             wallet_updates=True,
             ad_rewards=True,
         )
-        await db.execute(insert_stmt)
+        db.add(prefs)
         await db.commit()
+        await db.refresh(prefs)
 
-        # Fetch the created preferences
-        result = await db.execute(query)
-        prefs = result.fetchone()
-
-    # Convert time objects to strings
-    prefs_dict = dict(prefs._mapping)
-    if prefs_dict.get("quiet_hours_start"):
-        prefs_dict["quiet_hours_start"] = prefs_dict["quiet_hours_start"].strftime("%H:%M")
-    if prefs_dict.get("quiet_hours_end"):
-        prefs_dict["quiet_hours_end"] = prefs_dict["quiet_hours_end"].strftime("%H:%M")
-
-    return prefs_dict
+    return prefs
 
 
 @router.put("/preferences", response_model=NotificationPreferencesResponse)
@@ -122,7 +107,6 @@ async def update_notification_preferences(
     """
     user_id = current_user.id
 
-    # Parse time strings if provided
     quiet_start = None
     quiet_end = None
     if preferences.quiet_hours_start:
@@ -144,38 +128,38 @@ async def update_notification_preferences(
                 detail="quiet_hours_end must be in HH:MM format"
             )
 
-    # Upsert preferences
-    from sqlalchemy.dialects.mysql import insert
+    result = await db.execute(
+        select(UserNotificationPreference).where(UserNotificationPreference.user_id == user_id)
+    )
+    prefs = result.scalar_one_or_none()
 
-    table = db.bind.metadata.tables["user_notification_preferences"]
-    stmt = insert(table).values(
-        user_id=user_id,
-        push_enabled=preferences.push_enabled,
-        study_reminders=preferences.study_reminders,
-        task_alerts=preferences.task_alerts,
-        referral_bonuses=preferences.referral_bonuses,
-        wallet_updates=preferences.wallet_updates,
-        ad_rewards=preferences.ad_rewards,
-        quiet_hours_start=quiet_start,
-        quiet_hours_end=quiet_end,
-        updated_at=datetime.utcnow(),
-    )
-    stmt = stmt.on_duplicate_key_update(
-        push_enabled=preferences.push_enabled,
-        study_reminders=preferences.study_reminders,
-        task_alerts=preferences.task_alerts,
-        referral_bonuses=preferences.referral_bonuses,
-        wallet_updates=preferences.wallet_updates,
-        ad_rewards=preferences.ad_rewards,
-        quiet_hours_start=quiet_start,
-        quiet_hours_end=quiet_end,
-        updated_at=datetime.utcnow(),
-    )
-    await db.execute(stmt)
+    if prefs:
+        prefs.push_enabled = preferences.push_enabled
+        prefs.study_reminders = preferences.study_reminders
+        prefs.task_alerts = preferences.task_alerts
+        prefs.referral_bonuses = preferences.referral_bonuses
+        prefs.wallet_updates = preferences.wallet_updates
+        prefs.ad_rewards = preferences.ad_rewards
+        prefs.quiet_hours_start = quiet_start
+        prefs.quiet_hours_end = quiet_end
+        prefs.updated_at = datetime.utcnow()
+    else:
+        prefs = UserNotificationPreference(
+            user_id=user_id,
+            push_enabled=preferences.push_enabled,
+            study_reminders=preferences.study_reminders,
+            task_alerts=preferences.task_alerts,
+            referral_bonuses=preferences.referral_bonuses,
+            wallet_updates=preferences.wallet_updates,
+            ad_rewards=preferences.ad_rewards,
+            quiet_hours_start=quiet_start,
+            quiet_hours_end=quiet_end,
+        )
+        db.add(prefs)
+
     await db.commit()
-
-    # Return updated preferences
-    return await get_notification_preferences(current_user, db)
+    await db.refresh(prefs)
+    return prefs
 
 
 @router.post("/fcm-token", response_model=FCMTokenResponse, status_code=status.HTTP_201_CREATED)
@@ -190,50 +174,32 @@ async def register_fcm_token(
     """
     user_id = current_user.id
 
-    # Check if token already exists
-    table = db.bind.metadata.tables["fcm_tokens"]
-    query = select(table).where(table.c.token == token_req.token)
-    result = await db.execute(query)
-    existing = result.fetchone()
+    result = await db.execute(
+        select(FCMToken).where(FCMToken.token == token_req.token)
+    )
+    existing = result.scalar_one_or_none()
 
     if existing:
-        # Reactivate existing token
-        update_stmt = (
-            table.update()
-            .where(table.c.token == token_req.token)
-            .values(
-                is_active=True,
-                user_id=user_id,  # Update user_id in case device switched accounts
-                platform=token_req.platform,
-                device_id=token_req.device_id,
-                updated_at=datetime.utcnow(),
-            )
-        )
-        await db.execute(update_stmt)
+        existing.is_active = True
+        existing.user_id = user_id
+        existing.platform = token_req.platform
+        existing.device_id = token_req.device_id
+        existing.updated_at = datetime.utcnow()
         await db.commit()
+        await db.refresh(existing)
+        return existing
 
-        # Fetch updated token
-        result = await db.execute(query)
-        token_row = result.fetchone()
-        return dict(token_row._mapping)
-
-    # Insert new token
-    insert_stmt = table.insert().values(
+    new_token = FCMToken(
         user_id=user_id,
         token=token_req.token,
         platform=token_req.platform,
         device_id=token_req.device_id,
         is_active=True,
     )
-    result = await db.execute(insert_stmt)
+    db.add(new_token)
     await db.commit()
-
-    # Fetch the created token
-    query = select(table).where(table.c.id == result.lastrowid)
-    result = await db.execute(query)
-    token_row = result.fetchone()
-
-    return dict(token_row._mapping)
+    await db.refresh(new_token)
+    return new_token
 
 
 @router.delete("/fcm-token/{token}", status_code=status.HTTP_204_NO_CONTENT)
@@ -248,22 +214,23 @@ async def deregister_fcm_token(
     """
     user_id = current_user.id
 
-    table = db.bind.metadata.tables["fcm_tokens"]
-    stmt = (
-        table.update()
-        .where(table.c.token == token)
-        .where(table.c.user_id == user_id)
-        .values(is_active=False, updated_at=datetime.utcnow())
+    result = await db.execute(
+        select(FCMToken).where(
+            FCMToken.token == token,
+            FCMToken.user_id == user_id,
+        )
     )
-    result = await db.execute(stmt)
-    await db.commit()
+    fcm_token = result.scalar_one_or_none()
 
-    if result.rowcount == 0:
+    if not fcm_token:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Token not found or already inactive"
         )
 
+    fcm_token.is_active = False
+    fcm_token.updated_at = datetime.utcnow()
+    await db.commit()
     return None
 
 
@@ -278,13 +245,10 @@ async def list_fcm_tokens(
     """
     user_id = current_user.id
 
-    table = db.bind.metadata.tables["fcm_tokens"]
-    query = select(table).where(
-        table.c.user_id == user_id,
-        table.c.is_active == True
-    ).order_by(table.c.created_at.desc())
-
-    result = await db.execute(query)
-    tokens = result.fetchall()
-
-    return [dict(row._mapping) for row in tokens]
+    result = await db.execute(
+        select(FCMToken)
+        .where(FCMToken.user_id == user_id, FCMToken.is_active == True)
+        .order_by(FCMToken.created_at.desc())
+    )
+    tokens = result.scalars().all()
+    return list(tokens)
