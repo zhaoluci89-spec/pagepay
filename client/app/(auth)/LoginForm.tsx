@@ -12,7 +12,6 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 
 import { apiFetch } from '@/src/shared/api/client';
@@ -28,9 +27,7 @@ import {
   usePreferences,
 } from '@/src/shared/lib/preferences';
 import { clearToken } from '@/src/shared/lib/storage';
-import { useBiometricAuth } from '@/src/shared/hooks/use-biometric-auth';
 import { registerFCMToken } from '@/src/lib/notifications';
-import { getLastRoute, saveLastRoute } from '@/src/shared/lib/screen-memory';
 import { PageMark } from '@/components/PageMark';
 import { AnimatedInput } from '@/components/AnimatedInput';
 import { PasswordToggle } from '@/components/Field';
@@ -50,8 +47,6 @@ export default function LoginScreen({ onSwitchToRegister }: Props) {
   const router = useRouter();
   const scheme = useEffectiveScheme();
   const tokens = PagePay[scheme];
-  const { isSupported, isEnrolled, authenticate } = useBiometricAuth();
-  const biometricEnabled = usePreferences((s) => s.biometricEnabled);
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -60,62 +55,9 @@ export default function LoginScreen({ onSwitchToRegister }: Props) {
   const [formError, setFormError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
-  const [errorTrigger, setErrorTrigger] = useState(false);
+   const [errorTrigger, setErrorTrigger] = useState(false);
 
-  const handleBiometricLogin = useCallback(async () => {
-    setLoading(true);
-    setFormError(null);
-    try {
-      const result = await authenticate();
-      if (!result.success) {
-        setFormError(result.error || t('auth.login.errors.biometric_failed'));
-        setErrorTrigger(true);
-        setTimeout(() => setErrorTrigger(false), 600);
-        return;
-      }
-
-      const refreshToken = await getRefreshToken();
-      if (!refreshToken) {
-        setFormError(t('auth.login.errors.no_credentials'));
-        setErrorTrigger(true);
-        setTimeout(() => setErrorTrigger(false), 600);
-        return;
-      }
-
-      const res = await apiFetch('/api/v1/auth/refresh', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refresh_token: refreshToken }),
-      });
-
-      if (!res.ok) {
-        await saveToken('');
-        setFormError(t('auth.login.errors.session_expired'));
-        setErrorTrigger(true);
-        setTimeout(() => setErrorTrigger(false), 600);
-        return;
-      }
-
-      const data = await res.json();
-      await saveToken(data.access_token);
-      if (data.refresh_token) {
-        await saveRefreshToken(data.refresh_token);
-      }
-      
-      await registerFCMToken();
-      
-      const lastRoute = await getLastRoute();
-      router.replace((lastRoute || '/(tabs)') as any);
-    } catch {
-      setFormError(t('auth.login.errors.connection_error'));
-      setErrorTrigger(true);
-      setTimeout(() => setErrorTrigger(false), 600);
-    } finally {
-      setLoading(false);
-    }
-  }, [authenticate, router, t]);
-
-  // Stable change handlers. Each one only clears its own field error after
+   // Stable change handlers. Each one only clears its own field error after
   // the first keystroke — never `formError` and never in `onFocus`. Clearing
   // state from `onFocus` was the cause of the focus-jumping loop on Android:
   // focus → setState → layout pass → focus stolen → next field grabs focus.
@@ -183,8 +125,7 @@ export default function LoginScreen({ onSwitchToRegister }: Props) {
       }
       
       await registerFCMToken();
-      const lastRoute = await getLastRoute();
-      router.replace((lastRoute || '/(tabs)') as any);
+      router.replace('/(tabs)');
     } catch {
       setFormError(t('auth.login.errors.connection_error'));
       setErrorTrigger(true);
@@ -230,22 +171,6 @@ export default function LoginScreen({ onSwitchToRegister }: Props) {
                         {formError}
                       </Text>
                     </View>
-                  ) : null}
-
-                  {isSupported && isEnrolled && biometricEnabled ? (
-                    <Pressable
-                      onPress={handleBiometricLogin}
-                      disabled={loading}
-                      style={({ pressed }) => [
-                        styles.biometricButton,
-                        { backgroundColor: tokens.mintSoft, borderColor: tokens.mint, opacity: pressed ? 0.7 : 1 },
-                      ]}
-                    >
-                      <Ionicons name="finger-print" size={22} color={tokens.mint} />
-                      <Text style={[styles.biometricText, { color: tokens.mint }]}>
-                        {loading ? t('auth.login.authenticating') : t('auth.login.biometric_button')}
-                      </Text>
-                    </Pressable>
                   ) : null}
 
                   <View style={{ gap: 14 }}>
@@ -390,20 +315,6 @@ const styles = StyleSheet.create({
   },
   tertiaryLink: {
     fontSize: 14,
-    fontWeight: '600',
-  },
-  biometricButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    borderRadius: 14,
-    borderWidth: 1,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-  },
-  biometricText: {
-    fontSize: 15,
     fontWeight: '600',
   },
 });

@@ -1,11 +1,10 @@
 import { Platform } from 'react-native';
 
 export const LAST_ROUTE_KEY = 'pagepay_last_route';
-const isWeb = Platform.OS === 'web';
 
 export async function saveLastRoute(route: string): Promise<void> {
   if (!route || route === '/') return;
-  if (isWeb) {
+  if (Platform.OS === 'web') {
     localStorage.setItem(LAST_ROUTE_KEY, route);
   } else {
     const SecureStore = await import('expo-secure-store');
@@ -14,7 +13,7 @@ export async function saveLastRoute(route: string): Promise<void> {
 }
 
 export async function getLastRoute(): Promise<string | null> {
-  if (isWeb) {
+  if (Platform.OS === 'web') {
     return localStorage.getItem(LAST_ROUTE_KEY);
   }
   const SecureStore = await import('expo-secure-store');
@@ -22,7 +21,7 @@ export async function getLastRoute(): Promise<string | null> {
 }
 
 export async function clearLastRoute(): Promise<void> {
-  if (isWeb) {
+  if (Platform.OS === 'web') {
     localStorage.removeItem(LAST_ROUTE_KEY);
   } else {
     const SecureStore = await import('expo-secure-store');
