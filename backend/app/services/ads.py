@@ -402,6 +402,9 @@ async def list_recent_credits_for_user(
     keyed on AdEvent — that's what the existing /api/v1/wallet/
     transactions endpoint surfaces.
     """
+    if since.tzinfo is not None:
+        since = since.utc().replace(tzinfo=None)
+
     rows = (
         await db.execute(
             select(AdEvent)
