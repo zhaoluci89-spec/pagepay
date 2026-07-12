@@ -95,7 +95,14 @@ export function LinkPayoutAccountModal({
 
   // Online list when available; offline list (curated top banks) when
   // the fetch fails or the user is offline.
-  const banks: NigerianBank[] = banksQuery.data ?? NIGERIAN_BANKS;
+  const banks: NigerianBank[] = useMemo(() => {
+    const source = banksQuery.data ?? NIGERIAN_BANKS;
+    const map = new Map<string, NigerianBank>();
+    for (const b of source) {
+      if (!map.has(b.code)) map.set(b.code, b);
+    }
+    return Array.from(map.values());
+  }, [banksQuery.data]);
 
   const [bank, setBank] = useState<NigerianBank | null>(
     current
