@@ -3,7 +3,7 @@ import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AppState, AppStateStatus, Platform } from 'react-native';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useFonts, SpaceGrotesk_500Medium, SpaceGrotesk_700Bold } from '@expo-google-fonts/space-grotesk';
 import * as LocalAuthentication from 'expo-local-authentication';
 import 'react-native-reanimated';
@@ -13,6 +13,7 @@ import { useAdsConfig } from '@/src/shared/hooks/use-ads-config';
 import { bootstrapPreferences, usePreferences } from '@/src/shared/lib/preferences';
 import { getToken } from '@/src/shared/lib/storage';
 import { getLastRoute, saveLastRoute, clearLastRoute } from '@/src/shared/lib/screen-memory';
+import { useBiometricAuth } from '@/src/shared/hooks/use-biometric-auth';
 import { initializeAdMob } from '@/src/shared/lib/ads-native';
 import { setOnUnauthenticated } from '@/src/shared/api/client';
 import { setupNotificationListeners, registerFCMToken } from '@/src/lib/notifications';
@@ -31,12 +32,18 @@ function useAuthGate() {
   const segments = useSegments();
   const router = useRouter();
   const [isReady, setIsReady] = useState(false);
+  const bioInProgressRef = useRef(false);
+  const { authenticate } = useBiometricAuth();
+  const authenticateRef = useRef(authenticate);
+  authenticateRef.current = authenticate;
   const onboardingCompleted = usePreferences((s) => s.onboardingCompleted);
   const hydrated = usePreferences((s) => s.hydrated);
 
   useEffect(() => {
     if (!hydrated) return;
     let cancelled = false;
+    bioInProgressRef.current = true;
+
     (async () => {
       const token = await getToken();
 
@@ -49,6 +56,7 @@ function useAuthGate() {
         }
         await new Promise((r) => setTimeout(r, 50));
         if (!cancelled) setIsReady(true);
+        bioInProgressRef.current = false;
         return;
       }
 
@@ -72,6 +80,7 @@ function useAuthGate() {
               (router as any).replace('/pin/verify?mode=verify&redirect=' + (lastRoute || '/(tabs)'));
               await new Promise((r) => setTimeout(r, 50));
               if (!cancelled) setIsReady(true);
+              bioInProgressRef.current = false;
               return;
             }
           }
@@ -80,6 +89,7 @@ function useAuthGate() {
           (router as any).replace('/pin/verify?mode=verify&redirect=' + (lastRoute || '/(tabs)'));
           await new Promise((r) => setTimeout(r, 50));
           if (!cancelled) setIsReady(true);
+          bioInProgressRef.current = false;
           return;
         }
       }
@@ -88,10 +98,16 @@ function useAuthGate() {
       (router as any).replace(lastRoute || '/(tabs)');
       await new Promise((r) => setTimeout(r, 50));
       if (!cancelled) setIsReady(true);
+      bioInProgressRef.current = false;
     })();
-    return () => { cancelled = true; };
-  }, [hydrated, router]);
 
+    return () => {
+      cancelled = true;
+      bioInProgressRef.current = false;
+    };
+  }, [hydrated]);
+
+  // Persist current meaningful route — auth/onboarding/pin are never saved
   useEffect(() => {
     if (!hydrated) return;
     (async () => {
@@ -99,8 +115,8 @@ function useAuthGate() {
       if (!token) return;
       const inAuthGroup = segments[0] === '(auth)';
       const inOnboardingGroup = segments[0] === '(onboarding)';
-      if (inAuthGroup || inOnboardingGroup) return;
-      if (segments[0] === 'pin') return;
+      if (inAuthGroup || inOnboardingGroup || segments[0] === 'pin') return;
+
       const pathname = '/' + segments.join('/');
       if (pathname && pathname !== '/') {
         await saveLastRoute(pathname).catch(() => {});
@@ -108,13 +124,18 @@ function useAuthGate() {
     })();
   }, [hydrated, segments]);
 
+  // AppState resume: save route + biometric gate (PIN fallback)
   useEffect(() => {
     let lastState: AppStateStatus = AppState.currentState;
+
     const handleAppStateChange = async (nextState: AppStateStatus) => {
       const wasInactive = lastState === 'inactive';
       const nowActive = nextState === 'active';
       lastState = nextState;
       if (!wasInactive || !nowActive) return;
+
+      // Skip if cold-start biometric is already showing
+      if (bioInProgressRef.current) return;
 
       try {
         const pathname = '/' + segments.join('/');
@@ -127,9 +148,7 @@ function useAuthGate() {
       if (!prefs.biometricEnabled) return;
 
       try {
-        const { useBiometricAuth } = await import('@/src/shared/hooks/use-biometric-auth');
-        const { authenticate } = useBiometricAuth();
-        const result = await authenticate();
+        const result = await authenticateRef.current();
         if (!result.success) {
           const lastRoute = await getLastRoute();
           (router as any).replace('/pin/verify?mode=verify&redirect=' + (lastRoute || '/(tabs)'));
@@ -139,16 +158,9 @@ function useAuthGate() {
         (router as any).replace('/pin/verify?mode=verify&redirect=' + (lastRoute || '/(tabs)'));
       }
     };
+
     const subscription = AppState.addEventListener('change', handleAppStateChange);
     return () => subscription.remove();
-  }, [router, segments]);
-
-  useEffect(() => {
-    setOnUnauthenticated(() => {
-      if (segments[0] !== '(auth)' && segments[0] !== '(onboarding)') {
-        (router as any).replace('/(auth)/');
-      }
-    });
   }, [router, segments]);
 
   return isReady;
@@ -230,13 +242,14 @@ export default function RootLayout() {
   // and runs the full animation sequence. When complete, it calls onDone
   // to dismiss and reveal the app.
   const [splashDismissed, setSplashDismissed] = useState(false);
+  const onSplashDone = useCallback(() => setSplashDismissed(true), []);
 
   if (!isReady || !fontsLoaded) {
     // Show animated splash overlay during initialization.
     // Native splash (expo-splash-screen) shows first, then we take over
     // with the full animated sequence when JS loads and fonts are ready.
     if (!splashDismissed) {
-      return <SplashOverlay onDone={() => setSplashDismissed(true)} />;
+      return <SplashOverlay onDone={onSplashDone} />;
     }
     return null;
   }
