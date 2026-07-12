@@ -2,9 +2,10 @@ import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { AppState, AppStateStatus } from 'react-native';
+import { AppState, AppStateStatus, Platform } from 'react-native';
 import { useEffect, useState } from 'react';
 import { useFonts, SpaceGrotesk_500Medium, SpaceGrotesk_700Bold } from '@expo-google-fonts/space-grotesk';
+import * as LocalAuthentication from 'expo-local-authentication';
 import 'react-native-reanimated';
 
 import { useEffectiveScheme } from '@/src/shared/hooks/use-effective-scheme';
@@ -88,7 +89,33 @@ function useAuthGate() {
         } else if (onboardingCompleted && !inAuthGroup) {
           router.replace('/(auth)/');
         }
-      } else if (token && inAuthGroup && segments[1] !== 'verify-email-code') {
+      } else if (inAuthGroup && segments[1] !== 'verify-email-code') {
+        const prefs = usePreferences.getState();
+        if (prefs.biometricEnabled) {
+          try {
+            const supported = await LocalAuthentication.hasHardwareAsync();
+            const enrolled = await LocalAuthentication.isEnrolledAsync();
+            if (supported && enrolled) {
+              const result = await LocalAuthentication.authenticateAsync({
+                promptMessage: Platform.select({
+                  ios: 'Authenticate to access PagePay',
+                  android: 'Biometric authentication',
+                }),
+                fallbackLabel: 'Use passcode',
+                cancelLabel: 'Cancel',
+                disableDeviceFallback: false,
+              });
+              if (!result.success) {
+                router.replace('/pin/verify?mode=verify&redirect=/(tabs)');
+                await new Promise((r) => setTimeout(r, 50));
+                setIsReady(true);
+                return;
+              }
+            }
+          } catch {
+            // Biometric module unavailable — proceed with normal flow.
+          }
+        }
         router.replace('/(tabs)');
       }
       // else: already on /onboarding or /auth/* — leave alone.
