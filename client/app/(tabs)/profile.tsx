@@ -204,23 +204,33 @@ export default function ProfileScreen() {
       await Haptics.notificationAsync(
         Haptics.NotificationFeedbackType.Success,
       );
+      if (next) {
+        Alert.alert(
+          t('profile.biometric.success_title', { defaultValue: 'Biometric Enabled' }),
+          t('profile.biometric.success_message', { defaultValue: 'You can now use biometric to sign in.' }),
+        );
+      }
     },
     [isSupported, isEnrolled, authenticate, setBiometricEnabled, t],
   );
 
   const handleSignOut = useCallback(async () => {
     // Best-effort server-side logout. We don't block UI on it — the
-    // real "logout" is `clearToken()`. If the call fails we still want
-    // to drop the token and route the user to login.
+    // real "logout" is clearing local auth state. If the call fails we
+    // still want to drop the token and route the user to login.
     try {
       await apiFetch('/api/v1/auth/logout', { method: 'POST' });
     } catch {
       // Network error is fine here — the local token clear is what
       // actually protects the user.
     }
-    await clearToken();
+
+    const { clearToken } = await import('@/src/shared/lib/storage');
+    const biometric = usePreferences.getState().biometricEnabled;
+    await clearToken(!biometric);
+
     qc.clear();
-      router.replace('/(auth)/');
+    router.replace('/(auth)/');
   }, [qc, router]);
 
   const version =

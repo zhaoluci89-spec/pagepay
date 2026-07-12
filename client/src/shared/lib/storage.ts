@@ -39,14 +39,18 @@ export async function getRefreshToken(): Promise<string | null> {
   return await SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
 }
 
-export async function clearToken(): Promise<void> {
+export async function clearToken(clearRefresh = true): Promise<void> {
   if (isWeb) {
     localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(REFRESH_TOKEN_KEY);
+    if (clearRefresh) {
+      localStorage.removeItem(REFRESH_TOKEN_KEY);
+    }
   } else {
     const SecureStore = await import('expo-secure-store');
     await SecureStore.deleteItemAsync(TOKEN_KEY);
-    await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY);
+    if (clearRefresh) {
+      await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY);
+    }
   }
 }
 

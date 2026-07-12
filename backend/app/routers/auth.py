@@ -261,18 +261,12 @@ async def change_password(
 async def logout(request: Request, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     logger.info("User %s signed out.", current_user.id)
     
-    # Revoke current JWT
+    # Revoke current JWT only. We intentionally do NOT revoke refresh
+    # tokens here so that biometric login and other long-lived sessions
+    # continue to work after logout.
     jti = _get_jti_from_request(request)
     if jti:
         await revoke_jwt(db, jti, current_user.id, reason="logout")
-    
-    # Revoke all refresh tokens for this user
-    result = await db.execute(
-        select(RefreshToken).where(RefreshToken.user_id == current_user.id, RefreshToken.revoked == False)  # noqa: E712
-    )
-    for token in result.scalars().all():
-        token.revoked = True
-    await db.commit()
     
     # Log logout
     await log_user_action(
