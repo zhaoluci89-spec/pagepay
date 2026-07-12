@@ -328,73 +328,65 @@ async def _verify_admob_ssv_signature(
 ) -> bool:
     """Verify the ECDSA P-256 signature on an AdMob SSV callback.
 
-    The signing string is constructed from the URL-encoded query parameters
-    (excluding 'signature' and 'key_id') sorted alphabetically by key,
-    formatted as 'key=value\\n' with a trailing '\\n'.
-
-    Values must be URL-encoded (raw from the callback URL), because AdMob's
-    signature is computed over the URL-encoded form — not the decoded one.
+    Per Google's official docs:
+    - The data to verify is the raw query string up to (but not including)
+      the `&signature=` parameter, preserving the original parameter order.
+    - The signature is base64url-encoded DER format (no standard padding).
     """
     signature_b64 = query_params.get("signature")
     key_id = query_params.get("key_id")
     if not signature_b64 or not key_id:
         return False
 
-    # AdMob may send base64url without padding; normalize so b64decode works.
+    # Extract the data that was signed: everything before &signature=
+    sig_idx = raw_query_string.find("&signature=")
+    if sig_idx == -1:
+        return False
+    signed_data = raw_query_string[:sig_idx]
+
+    # Base64url decode the signature (no padding, - and _ instead of + and /)
+    import base64
     normalized_sig = signature_b64.replace("-", "+").replace("_", "/")
     padding = 4 - len(normalized_sig) % 4
     if padding < 4:
         normalized_sig += "=" * padding
-
-    # Build signing string from raw URL-encoded query parameters.
-    # We parse the raw query string manually to preserve URL encoding.
-    excluded = {"signature", "key_id"}
-    raw_entries: list[tuple[str, str]] = []
-    for part in raw_query_string.split("&"):
-        if not part:
-            continue
-        if "=" in part:
-            k, v = part.split("=", 1)
-            raw_entries.append((k, v))
-        else:
-            raw_entries.append((part, ""))
-
-    # Sort alphabetically by key
-    raw_entries.sort(key=lambda x: x[0])
-
-    parts = []
-    for k, v in raw_entries:
-        if k in excluded:
-            continue
-        parts.append(f"{k}={v}")
-    signing_string = "\n".join(parts) + "\n"
+    try:
+        signature = base64.urlsafe_b64decode(signature_b64)
+    except Exception:
+        try:
+            signature = base64.b64decode(normalized_sig)
+        except Exception:
+            return False
 
     try:
-        import base64
-        from cryptography.hazmat.primitives.asymmetric import ec
-        from cryptography.hazmat.primitives import serialization, hashes
-        from cryptography.hazmat.backends import default_backend
-
         keys = await _fetch_verifier_keys()
         if key_id not in keys:
             logger.warning("AdMob SSV: unknown key_id=%s", key_id)
             return False
 
+        from cryptography.hazmat.primitives.asymmetric import ec
+        from cryptography.hazmat.primitives import serialization, hashes
+        from cryptography.hazmat.backends import default_backend
+
         pem_data = keys[key_id].encode("utf-8")
         public_key = serialization.load_pem_public_key(pem_data, backend=default_backend())
 
-        signature = base64.b64decode(normalized_sig)
-
-        public_key.verify(signature, signing_string.encode("utf-8"), ec.ECDSA(hashes.SHA256()))
+        public_key.verify(
+            signature,
+            signed_data.encode("utf-8"),
+            ec.ECDSA(hashes.SHA256()),
+        )
         return True
     except Exception as exc:
         logger.error(
             "AdMob SSV signature verification failed: %s: %s",
-            type(exc).__name__, exc,
+            type(exc).__name__,
+            exc,
         )
         logger.debug(
-            "AdMob SSV signing string (key_id=%s): %r",
-            key_id, signing_string[:500],
+            "AdMob SSV signed data (key_id=%s): %r",
+            key_id,
+            signed_data[:500],
         )
         return False
 
@@ -433,7 +425,8 @@ async def admob_ssv_callback(
     """
     # Get both decoded params (for reading values) and raw query string (for
     # signature verification — AdMob signs the URL-encoded form, not decoded).
-    raw_query_string = request.url.query or ""
+    raw_query_bytes = request.scope.get("query_string", b"") or b""
+    raw_query_string = raw_query_bytes.decode("utf-8", errors="replace")
     query_params = {k: v for k, v in request.query_params.items()}
 
     if not query_params:
