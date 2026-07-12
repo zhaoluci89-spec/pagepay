@@ -2,6 +2,7 @@ import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { AppState, AppStateStatus } from 'react-native';
 import { useEffect, useState } from 'react';
 import { useFonts, SpaceGrotesk_500Medium, SpaceGrotesk_700Bold } from '@expo-google-fonts/space-grotesk';
 import 'react-native-reanimated';
@@ -135,10 +136,7 @@ export default function RootLayout() {
     let cleanup: (() => void) | undefined;
 
     const initNotifications = async () => {
-      // Set up notification listeners
       cleanup = setupNotificationListeners();
-
-      // Register FCM token with backend (if user is logged in)
       const token = await getToken();
       if (token) {
         await registerFCMToken();
@@ -151,6 +149,45 @@ export default function RootLayout() {
       if (cleanup) cleanup();
     };
   }, []);
+
+  // App-state listener: when the app returns from background, if
+  // biometric auth is enabled, prompt biometric immediately. If it
+  // fails, fall back to PIN verification.
+  useEffect(() => {
+    let lastState: AppStateStatus = AppState.currentState;
+
+    const handleAppStateChange = async (nextState: AppStateStatus) => {
+      const wasInactive = lastState === 'inactive';
+      const nowActive = nextState === 'active';
+      lastState = nextState;
+
+      if (!wasInactive || !nowActive) return;
+
+      const token = await getToken();
+      if (!token) return;
+
+      const prefs = usePreferences.getState();
+      if (!prefs.biometricEnabled) return;
+
+      try {
+        const { useBiometricAuth } = await import('@/src/shared/hooks/use-biometric-auth');
+        const { authenticate } = useBiometricAuth();
+        const result = await authenticate();
+        if (!result.success) {
+          const segments = router.getRootState()?.routes || [];
+          const inAuth = segments[0]?.name === '(auth)';
+          if (!inAuth) {
+            router.replace('/pin/verify?mode=verify&redirect=/');
+          }
+        }
+      } catch {
+        // Biometric module unavailable or error — fall back silently.
+      }
+    };
+
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+    return () => subscription.remove();
+  }, [router]);
 
   // Splash overlay state. Native splash (expo-splash-screen) shows first
   // as a static image while JS loads. Once fonts are loaded and auth is
@@ -196,6 +233,9 @@ export default function RootLayout() {
         <Stack.Screen name="buy-electricity" options={{ headerShown: false, title: 'Buy Electricity' }} />
         <Stack.Screen name="buy-tv" options={{ headerShown: false, title: 'Buy TV Subscription' }} />
         <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
+        <Stack.Screen name="pin/verify" options={{ headerShown: false, title: 'Enter PIN' }} />
+        <Stack.Screen name="pin/setup" options={{ headerShown: false, title: 'Set PIN' }} />
+        <Stack.Screen name="pin/change" options={{ headerShown: false, title: 'Change PIN' }} />
         </Stack>
         <StatusBar style="auto" />
       </ThemeProvider>

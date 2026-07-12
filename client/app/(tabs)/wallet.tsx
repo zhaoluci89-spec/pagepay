@@ -7,6 +7,7 @@ import * as Haptics from 'expo-haptics';
 import { useTranslation } from 'react-i18next';
 
 import { apiFetch } from '@/src/shared/api/client';
+import { consumePendingWithdrawAfterPin } from '@/src/shared/lib/pin-verify-flag';
 import { formatKobo, formatPoints } from '@/src/shared/lib/money';
 import { useEffectiveScheme } from '@/src/shared/hooks/use-effective-scheme';
 import { PagePay, Fonts } from '@/constants/theme';
@@ -96,6 +97,16 @@ export default function WalletScreen() {
     }
   }, [adConfig]);
 
+  // If the user just verified their PIN for a withdrawal, open the
+  // withdrawal modal automatically.
+  useFocusEffect(
+    useCallback(() => {
+      if (consumePendingWithdrawAfterPin() && payoutAccount) {
+        setShowWithdraw(true);
+      }
+    }, [payoutAccount]),
+  );
+
   const meQ = useQuery({
     queryKey: ['me'],
     queryFn: async () => {
@@ -123,6 +134,15 @@ export default function WalletScreen() {
       return (await res.json()) as PayoutAccount;
     },
     staleTime: 30_000,
+  });
+
+  const pinStatusQ = useQuery({
+    queryKey: ['pin', 'status'],
+    queryFn: async () => {
+      const res = await apiFetch('/api/v1/pin/status');
+      if (!res.ok) throw new Error('Failed to load PIN status');
+      return (await res.json()) as { has_pin: boolean };
+    },
   });
 
   const withdrawalsQ = useQuery({
@@ -173,15 +193,16 @@ export default function WalletScreen() {
   const handleWithdrawPress = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     if (!payoutAccount) {
-      // No bank linked — open the link flow first. After it saves, the
-      // `onSaved` callback flips `pendingWithdraw` so we open Withdraw
-      // automatically when the Link modal closes.
       setPendingWithdraw(true);
       setShowLink(true);
       return;
     }
+    if (pinStatusQ.data?.has_pin) {
+      router.push('/pin/verify?mode=verify&redirect=/(tabs)/wallet');
+      return;
+    }
     setShowWithdraw(true);
-  }, [payoutAccount]);
+  }, [payoutAccount, pinStatusQ.data, router]);
 
   const handleLinkSaved = useCallback(() => {
     void qc.invalidateQueries({ queryKey: ['payout', 'account'] });

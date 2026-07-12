@@ -48,6 +48,7 @@ class User(Base):
     last_login_ip: Mapped[str | None] = mapped_column(String(45), nullable=True)
     last_login_user_agent: Mapped[str | None] = mapped_column(String(255), nullable=True)
     device_fingerprint: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    transaction_pin_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     # ── Phase 7: Social Tasks (moved from BillTransaction) ────────────
     is_worker: Mapped[bool] = mapped_column(Boolean, default=True)

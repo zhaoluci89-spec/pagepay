@@ -136,6 +136,15 @@ export default function ProfileScreen() {
     staleTime: 30_000,
   });
 
+  const pinStatusQuery = useQuery({
+    queryKey: ['pin', 'status'],
+    queryFn: async () => {
+      const res = await apiFetch('/api/v1/pin/status');
+      if (!res.ok) throw new Error('Failed to load PIN status');
+      return (await res.json()) as { has_pin: boolean };
+    },
+  });
+
   const getTierLabel = (tier: string) => {
     const key = tier as 'free' | 'premium_monthly' | 'premium_yearly';
     return t(`profile.tier.${key}`, { defaultValue: tier });
@@ -508,6 +517,20 @@ export default function ProfileScreen() {
                 thumbColor={biometricEnabled ? tokens.mintText : tokens.inkMuted}
               />
             }
+          />
+          <Divider tokens={tokens} />
+          <Row
+            tokens={tokens}
+            icon="key-outline"
+            label={t('profile.pin.title', { defaultValue: 'Transaction PIN' })}
+            trailing={
+              <Text style={[styles.rowTrailing, { color: tokens.inkMuted }]}>
+                {pinStatusQuery.data?.has_pin
+                  ? t('profile.pin.set', { defaultValue: 'Set' })
+                  : t('profile.pin.not_set', { defaultValue: 'Not set' })}
+              </Text>
+            }
+            onPress={() => router.push(pinStatusQuery.data?.has_pin ? '/pin/change' : '/pin/setup')}
           />
         </View>
 
@@ -1027,6 +1050,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+  },
+  rowTrailing: {
+    fontSize: 13,
+    fontWeight: '500',
   },
   trailingHint: {
     fontSize: 13,
