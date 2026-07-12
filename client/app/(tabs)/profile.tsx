@@ -6,6 +6,7 @@ import {
   ScrollView,
   Share,
   StyleSheet,
+  Switch,
   Text,
   TouchableOpacity,
   View,
@@ -32,6 +33,7 @@ import {
   type ThemePref,
 } from '@/src/shared/lib/preferences';
 import { clearToken } from '@/src/shared/lib/storage';
+import { useBiometricAuth } from '@/src/shared/hooks/use-biometric-auth';
 import { useEffectiveScheme } from '@/src/shared/hooks/use-effective-scheme';
 import { PagePay } from '@/constants/theme';
 import { PageMark } from '@/components/PageMark';
@@ -83,6 +85,9 @@ export default function ProfileScreen() {
   const setTheme = usePreferences((s) => s.setTheme);
   const language = usePreferences((s) => s.language);
   const setLanguage = usePreferences((s) => s.setLanguage);
+  const biometricEnabled = usePreferences((s) => s.biometricEnabled);
+  const setBiometricEnabled = usePreferences((s) => s.setBiometricEnabled);
+  const { isSupported, isEnrolled } = useBiometricAuth();
 
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [showPayout, setShowPayout] = useState(false);
@@ -170,6 +175,26 @@ export default function ProfileScreen() {
   const handleNotifications = useCallback(() => {
     setShowNotifications(true);
   }, []);
+
+  const handleBiometricToggle = useCallback(
+    async (next: boolean) => {
+      if (next && (!isSupported || !isEnrolled)) {
+        Alert.alert(
+          t('profile.biometric.unavailable_title', { defaultValue: 'Biometric Unavailable' }),
+          t('profile.biometric.unavailable_message', { defaultValue: 'Biometric authentication is not set up on this device. Please add a fingerprint or face recognition in your device settings first.' }),
+        );
+        return;
+      }
+      setBiometricEnabled(next);
+      await import('@/src/shared/lib/preferences').then((m) =>
+        m.persistBiometricEnabled(next),
+      );
+      await Haptics.notificationAsync(
+        Haptics.NotificationFeedbackType.Success,
+      );
+    },
+    [isSupported, isEnrolled, setBiometricEnabled, t],
+  );
 
   const handleSignOut = useCallback(async () => {
     // Best-effort server-side logout. We don't block UI on it — the
@@ -447,6 +472,21 @@ export default function ProfileScreen() {
             icon="notifications-outline"
             label={t('profile.account.notifications')}
             onPress={handleNotifications}
+          />
+          <Divider tokens={tokens} />
+          <Row
+            tokens={tokens}
+            icon="finger-print-outline"
+            label={t('profile.biometric.title', { defaultValue: 'Biometric Login' })}
+            trailing={
+              <Switch
+                value={biometricEnabled}
+                onValueChange={handleBiometricToggle}
+                trackColor={{ false: tokens.border, true: tokens.mint }}
+                thumbColor={biometricEnabled ? tokens.mintText : tokens.inkMuted}
+              />
+            }
+            onPress={() => handleBiometricToggle(!biometricEnabled)}
           />
         </View>
 

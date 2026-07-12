@@ -22,26 +22,23 @@ export type LanguagePref = 'en' | 'pcm' | 'yo' | 'ha' | 'ig';
 type PreferencesState = {
   theme: ThemePref;
   language: LanguagePref;
-  /**
-   * One-time flag — true after the user finishes the 5-screen onboarding
-   * (taps the final "Get started" CTA). Set locally on the device; never
-   * synced to the server. Persisted under `pagepay_pref_onboarding_completed`
-   * via expo-secure-store. See `client/app/(onboarding)/index.tsx`.
-   */
   onboardingCompleted: boolean;
   hydrated: boolean;
+  biometricEnabled: boolean;
   setTheme: (t: ThemePref) => void;
   setLanguage: (l: LanguagePref) => void;
   setOnboardingCompleted: (v: boolean) => void;
+  setBiometricEnabled: (v: boolean) => void;
 };
 
 const DEFAULTS: Pick<
   PreferencesState,
-  'theme' | 'language' | 'onboardingCompleted'
+  'theme' | 'language' | 'onboardingCompleted' | 'biometricEnabled'
 > = {
   theme: 'system',
   language: 'en',
   onboardingCompleted: false,
+  biometricEnabled: false,
 };
 
 export const usePreferences = create<PreferencesState>((set) => ({
@@ -51,6 +48,7 @@ export const usePreferences = create<PreferencesState>((set) => ({
   setLanguage: (language) => set({ language }),
   setOnboardingCompleted: (onboardingCompleted) =>
     set({ onboardingCompleted }),
+  setBiometricEnabled: (biometricEnabled) => set({ biometricEnabled }),
 }));
 
 /**
@@ -67,16 +65,14 @@ async function loadPreferences(): Promise<Partial<PreferencesState>> {
     const raw = await readPref('theme');
     const lang = await readPref('language');
     const onboarded = await readPref('onboarding_completed');
+    const biometric = await readPref('biometric_enabled');
     return {
       theme: isThemePref(raw) ? raw : DEFAULTS.theme,
       language: isLanguagePref(lang) ? lang : DEFAULTS.language,
-      // Stored as the string "true" / "false" by `persistOnboardingCompleted`.
-      // Anything missing or unparseable → not completed.
       onboardingCompleted: onboarded === 'true',
+      biometricEnabled: biometric === 'true',
     };
   } catch {
-    // Secure-store may be unavailable on web or first-run. Fall back
-    // to defaults rather than crashing the boot sequence.
     return {};
   }
 }
@@ -111,6 +107,12 @@ export async function persistOnboardingCompleted(
   value: boolean,
 ): Promise<void> {
   await writePref('onboarding_completed', value ? 'true' : 'false');
+}
+
+export async function persistBiometricEnabled(
+  value: boolean,
+): Promise<void> {
+  await writePref('biometric_enabled', value ? 'true' : 'false');
 }
 
 // ── Storage helpers ───────────────────────────────────────────────────

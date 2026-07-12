@@ -1,23 +1,14 @@
 import { useCallback, useState, useEffect } from 'react';
 import {
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { StatusBar } from 'expo-status-bar';
-import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
-import { useTranslation } from 'react-i18next';
-
-import { apiFetch } from '@/src/shared/api/client';
-import { saveToken, saveRefreshToken, getRefreshToken } from '@/src/shared/lib/storage';
-import { getDeviceFingerprint } from '@/src/shared/lib/device-fingerprint';
+  displayName,
+  initials,
+} from '@/src/shared/lib/display-name';
+import {
+  persistLanguage,
+  persistTheme,
+  usePreferences,
+} from '@/src/shared/lib/preferences';
+import { clearToken } from '@/src/shared/lib/storage';
 import { useBiometricAuth } from '@/src/shared/hooks/use-biometric-auth';
 import { registerFCMToken } from '@/src/lib/notifications';
 import { PageMark } from '@/components/PageMark';
@@ -40,6 +31,7 @@ export default function LoginScreen({ onSwitchToRegister }: Props) {
   const scheme = useEffectiveScheme();
   const tokens = PagePay[scheme];
   const { isSupported, isEnrolled, authenticate } = useBiometricAuth();
+  const biometricEnabled = usePreferences((s) => s.biometricEnabled);
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -222,7 +214,7 @@ export default function LoginScreen({ onSwitchToRegister }: Props) {
                     </View>
                   ) : null}
 
-                  {isSupported && isEnrolled ? (
+                  {isSupported && isEnrolled && biometricEnabled ? (
                     <Pressable
                       onPress={handleBiometricLogin}
                       disabled={loading}

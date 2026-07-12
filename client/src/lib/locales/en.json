@@ -48,7 +48,8 @@
       "change_password": "Change password",
       "billing_history": "Billing history",
       "manage_subscription": "Manage subscription",
-      "notifications": "Notifications"
+      "notifications": "Notifications",
+      "biometric": "Biometric Login"
     },
     "appearance": {
       "theme": "Theme",
@@ -65,6 +66,11 @@
     "support": {
       "help": "Help & support",
       "about": "About / app version"
+    },
+    "biometric": {
+      "title": "Biometric Login",
+      "unavailable_title": "Biometric Unavailable",
+      "unavailable_message": "Biometric authentication is not set up on this device. Please add a fingerprint or face recognition in your device settings first."
     },
     "sign_out": "Sign out",
     "tier": {
