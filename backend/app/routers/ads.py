@@ -340,6 +340,12 @@ async def _verify_admob_ssv_signature(
     if not signature_b64 or not key_id:
         return False
 
+    # AdMob may send base64url without padding; normalize so b64decode works.
+    normalized_sig = signature_b64.replace("-", "+").replace("_", "/")
+    padding = 4 - len(normalized_sig) % 4
+    if padding < 4:
+        normalized_sig += "=" * padding
+
     # Build signing string from raw URL-encoded query parameters.
     # We parse the raw query string manually to preserve URL encoding.
     excluded = {"signature", "key_id"}
@@ -377,7 +383,7 @@ async def _verify_admob_ssv_signature(
         pem_data = keys[key_id].encode("utf-8")
         public_key = serialization.load_pem_public_key(pem_data, backend=default_backend())
 
-        signature = base64.b64decode(signature_b64)
+        signature = base64.b64decode(normalized_sig)
 
         public_key.verify(signature, signing_string.encode("utf-8"), ec.ECDSA(hashes.SHA256()))
         return True
