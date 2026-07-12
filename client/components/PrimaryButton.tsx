@@ -1,4 +1,4 @@
-import { ActivityIndicator, Pressable, StyleSheet, Text } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, StyleProp, ViewStyle } from 'react-native';
 import * as Haptics from 'expo-haptics';
 
 import { PagePay } from '@/constants/theme';
@@ -9,6 +9,7 @@ type PrimaryButtonProps = {
   onPress: () => void;
   loading?: boolean;
   disabled?: boolean;
+  style?: StyleProp<ViewStyle>;
 };
 
 /**
@@ -20,6 +21,7 @@ export function PrimaryButton({
   onPress,
   loading = false,
   disabled = false,
+  style,
 }: PrimaryButtonProps) {
   const scheme = useEffectiveScheme();
   const tokens = PagePay[scheme];
@@ -50,6 +52,7 @@ export function PrimaryButton({
       accessibilityState={{ disabled: isInert, busy: loading }}
       style={({ pressed }) => [
         styles.btn,
+        style,
         {
           backgroundColor: bg,
           transform: [{ scale: pressed && !isInert ? 0.97 : 1 }],
