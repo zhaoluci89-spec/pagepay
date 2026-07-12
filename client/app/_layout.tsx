@@ -59,7 +59,7 @@ function useAuthGate() {
           const currentSegments = router.getRootState()?.routes || [];
           const inAuth = currentSegments[0]?.name === '(auth)';
           if (!inAuth) {
-            router.replace('/pin/verify?mode=verify&redirect=/');
+            router.replace('/pin/verify?mode=verify&redirect=/(tabs)');
           }
         }
       } catch {

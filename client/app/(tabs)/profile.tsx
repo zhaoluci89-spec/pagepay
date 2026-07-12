@@ -195,6 +195,21 @@ export default function ProfileScreen() {
         return;
       }
 
+      if (next && !pinStatusQuery.data?.has_pin) {
+        Alert.alert(
+          t('profile.pin.required_title', { defaultValue: 'Set Transaction PIN First' }),
+          t('profile.pin.required_message', { defaultValue: 'You must set a transaction PIN before enabling biometric login. This PIN will also be used as fallback if biometric fails.' }),
+          [
+            { text: t('common.cancel', { defaultValue: 'Cancel' }), style: 'cancel' },
+            {
+              text: t('profile.pin.setup_button', { defaultValue: 'Set PIN' }),
+              onPress: () => router.push('/pin/setup'),
+            },
+          ],
+        );
+        return;
+      }
+
       if (next) {
         const result = await authenticate();
         if (!result.success) {
@@ -220,7 +235,7 @@ export default function ProfileScreen() {
         );
       }
     },
-    [isSupported, isEnrolled, authenticate, setBiometricEnabled, t],
+    [isSupported, isEnrolled, authenticate, setBiometricEnabled, pinStatusQuery.data, router, t],
   );
 
   const handleSignOut = useCallback(async () => {

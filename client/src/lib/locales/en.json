@@ -98,7 +98,9 @@
       "error_generic": "Something went wrong.",
       "error_connection": "Network error. Try again.",
       "not_set": "Not set",
-      "set": "Set"
+      "set": "Set",
+      "required_title": "PIN Required",
+      "required_message": "You must set a transaction PIN before enabling biometric login. This PIN will also be used as fallback if biometric fails."
     },
     "sign_out": "Sign out",
     "tier": {
