@@ -1,5 +1,24 @@
 import { useCallback, useState, useEffect } from 'react';
 import {
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
+import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
+
+import { apiFetch } from '@/src/shared/api/client';
+import { saveToken, saveRefreshToken, getRefreshToken } from '@/src/shared/lib/storage';
+import { getDeviceFingerprint } from '@/src/shared/lib/device-fingerprint';
+import {
   displayName,
   initials,
 } from '@/src/shared/lib/display-name';
