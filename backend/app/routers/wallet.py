@@ -18,6 +18,19 @@ logger = logging.getLogger("uvicorn.error")
 router = APIRouter(prefix="/wallet", tags=["wallet"])
 
 
+def _slice_label(read_order: int | None, total_slices: int | None) -> str:
+    """Format slice position for transaction descriptions.
+
+    Standalone slices (read_order/total_slices are None) and single-slice
+    works (total_slices==1) render with the bare title. Multi-slice works
+    append the part position so the wallet clearly shows per-slice earnings
+    instead of sounding like a whole-book reward.
+    """
+    if read_order and total_slices and total_slices > 1:
+        return f" (Part {read_order} of {total_slices})"
+    return ""
+
+
 class Transaction(BaseModel):
     id: int
     type: str  # "earn" | "pending" | "ad_reward"
@@ -35,7 +48,12 @@ async def list_transactions(
     """Unified point-earning history combining reading sessions and ad rewards."""
     # Reading sessions
     session_stmt = (
-        select(ReadingSession, ContentCatalog.title)
+        select(
+            ReadingSession,
+            ContentCatalog.title,
+            ContentCatalog.read_order,
+            ContentCatalog.total_slices,
+        )
         .join(ContentCatalog, ContentCatalog.id == ReadingSession.content_id)
         .where(ReadingSession.user_id == current_user.id)
         .order_by(ReadingSession.start_time.desc())
@@ -55,25 +73,26 @@ async def list_transactions(
     ad_events = (await db.execute(ad_stmt)).scalars().all()
 
     out: list[Transaction] = []
-    for session, title in sessions:
+    for session, title, read_order, total_slices in sessions:
         sid = session.id
+        slice_info = _slice_label(read_order, total_slices)
         if session.claimed_at is not None and session.points_earned > 0:
             out.append(
                 Transaction(
                     id=sid, type="earn", points=session.points_earned,
-                    description=f'Earned on "{title}"', date=session.claimed_at,
+                    description=f'Earned on "{title}{slice_info}"', date=session.claimed_at,
                 )
             )
         elif (session.pending_points or 0) > 0:
             out.append(
                 Transaction(
-                    id=sid, type="pending", points=0,
-                    description=f'Watch an ad to claim "{title}"',
+                    id=sid, type="pending", points=session.pending_points or 0,
+                    description=f'Watch an ad to claim "{title}{slice_info}"',
                     date=session.end_time or session.start_time,
                 )
             )
         else:
-            desc = "Reading..." if session.end_time is None else f'Read "{title}"'
+            desc = "Reading..." if session.end_time is None else f'Read "{title}{slice_info}"'
             out.append(
                 Transaction(
                     id=sid, type="pending", points=0,

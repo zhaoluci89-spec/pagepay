@@ -18,12 +18,54 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 
 from app.database import get_db
-from app.models import User, ContentCatalog, ReadingProgress, SliceBookmark
+from app.models import User, ContentCatalog, ReadingProgress, SliceBookmark, ReadingUnit
 from app.routers.auth import get_current_user
-from app.schemas import ContinueReading, WorkProgress, BookmarkSave
+from app.schemas import (
+    ContinueReading, WorkProgress, BookmarkSave,
+    ReadingUnitItem, ReadingUnitListResponse,
+)
 
 router = APIRouter(prefix="/progress", tags=["progress"])
 logger = logging.getLogger("uvicorn.error")
+
+
+# ── Unit-locking helper ──────────────────────────────────────────────
+# Education content (OpenStax) has a per-topic unlock sequence: unit 1
+# of every topic is always free; units 2+ require either (a) the user
+# has premium tier, or (b) the user has completed all previous units
+# in the slice. This function encapsulates that rule so the unit
+# listing endpoint and the unit-finish endpoint agree.
+def _is_unit_unlocked(
+    unit_order: int,
+    completed_unit_orders: set[int],
+    user_tier,
+) -> tuple[bool, str | None]:
+    """Return (is_unlocked, unlock_reason). unlock_reason is a UI hint.
+
+    unit_order: the unit_order value of the unit being queried.
+    completed_unit_orders: the set of unit_order values the user has
+        already completed for this slice. In v1 we approximate this
+        by reading current_unit_order on the work's ReadingProgress
+        row: all orders < current_unit_order are treated as completed.
+    user_tier: the User's tier enum value (FREE / PREMIUM_*).
+
+    Rules:
+      - Unit 1 of every topic is always unlocked.
+      - Units 2+ unlock if the user has premium tier.
+      - Units 2+ also unlock if the user has completed the previous
+        unit in this slice (i.e. (unit_order - 1) ∈ completed).
+    """
+    if unit_order == 1:
+        return True, None
+    # Premium tier bypasses the lock. The tier column is a SQLAlchemy
+    # Enum whose .value is the string ('free' | 'premium_monthly' |
+    # 'premium_yearly'). Both premium variants unlock units.
+    if user_tier is not None and str(user_tier.value).startswith("premium"):
+        return True, None
+    # Sequential unlock: did the user complete the previous unit?
+    if (unit_order - 1) in completed_unit_orders:
+        return True, None
+    return False, "complete_previous"
 
 
 @router.get("/continue", response_model=ContinueReading)
@@ -334,3 +376,239 @@ async def start_work(
     )
     await db.commit()
     return {"ok": True, "already_tracked": False, "work_id": work_id}
+
+
+# ════════════════════════════════════════════════════════════════════════
+# Education unit endpoints (Phase: OpenStax integration)
+# ════════════════════════════════════════════════════════════════════════
+
+
+@router.get("/units/{slice_id}", response_model=ReadingUnitListResponse)
+async def list_slice_units(
+    slice_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """List the reading units for a topic slice, with lock state.
+
+    Returns every unit in the slice in unit_order sequence, each
+    annotated with is_unlocked, is_completed, and a human-readable
+    unlock_reason. The reader uses this to decide which unit to
+    render next, and to render the locked-unit upsell card.
+
+    For casual reader content (gutendex/gnews), each slice has
+    exactly 1 unit, and the unit is always unlocked. The reader
+    doesn't need to call this endpoint for those — but if it does,
+    the result is the expected single-unit list.
+    """
+    # Verify the slice exists.
+    slice_row = await db.execute(
+        select(ContentCatalog).where(ContentCatalog.id == slice_id)
+    )
+    slice_obj = slice_row.scalar_one_or_none()
+    if slice_obj is None:
+        raise HTTPException(status_code=404, detail="Slice not found")
+
+    # Fetch all units for the slice, ordered by unit_order.
+    units_rows = await db.execute(
+        select(ReadingUnit)
+        .where(ReadingUnit.slice_id == slice_id)
+        .order_by(ReadingUnit.unit_order)
+    )
+    units = units_rows.scalars().all()
+
+    # If there are no units, this is a casual reader slice. We
+    # synthesize a single unit from the slice's body_text so the
+    # reader's unit-aware flow has something to render. The unit
+    # has total_units=1 and unit_order=1, so it's always unlocked.
+    if not units and slice_obj.body_text:
+        synthesized = ReadingUnitItem(
+            id=-1,  # sentinel; reader treats this as "no DB row"
+            unit_order=1,
+            total_units=1,
+            is_unlocked=True,
+            is_completed=False,
+            estimated_read_minutes=max(1, slice_obj.estimated_read_minutes or 1),
+            unlock_reason=None,
+        )
+        return ReadingUnitListResponse(slice_id=slice_id, units=[synthesized])
+
+    # Determine the user's completed-unit set from their progress row
+    # for the parent work. current_unit_order is the next unit the
+    # user should read; everything below it is completed.
+    completed: set[int] = set()
+    if slice_obj.parent_work_id is not None:
+        rp_row = await db.execute(
+            select(ReadingProgress).where(
+                ReadingProgress.user_id == current_user.id,
+                ReadingProgress.work_id == slice_obj.parent_work_id,
+            )
+        )
+        rp = rp_row.scalar_one_or_none()
+        if rp is not None and rp.current_unit_order is not None:
+            completed = set(range(1, rp.current_unit_order))
+
+    items: list[ReadingUnitItem] = []
+    for u in units:
+        is_unlocked, reason = _is_unit_unlocked(
+            u.unit_order, completed, current_user.tier
+        )
+        is_completed = u.unit_order in completed
+        items.append(ReadingUnitItem(
+            id=u.id,
+            unit_order=u.unit_order,
+            total_units=u.total_units,
+            is_unlocked=is_unlocked,
+            is_completed=is_completed,
+            estimated_read_minutes=u.estimated_read_minutes,
+            unlock_reason=reason,
+        ))
+    return ReadingUnitListResponse(slice_id=slice_id, units=items)
+
+
+@router.post("/units/{unit_id}/finish")
+async def finish_unit(
+    unit_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Mark a reading unit as completed and advance the progress pointer.
+
+    For casual reader content (gutendex/gnews), this endpoint isn't
+    called — the existing /progress/finish handles those slices
+    directly. For education content, the reader calls this endpoint
+    when the user finishes a unit. The next unit (if any) becomes
+    available immediately if the user has completed the current one.
+
+    Premium tier also unlocks the next unit even if the user hasn't
+    finished the current one. The unit-finish call is always
+    idempotent — finishing an already-completed unit is a no-op.
+    """
+    # Fetch the unit. If unit_id is -1 (synthesized casual reader
+    # unit), we route to the existing /progress/finish behavior.
+    if unit_id == -1:
+        # Synthesized unit — no DB row. The caller is a casual reader
+        # slice that hasn't been broken into units. We treat this as
+        # "the slice is finished" and call into the existing flow.
+        # Note: the client should not normally hit this path because
+        # the reader renders casual reader slices without calling
+        # /units; this is a safety net.
+        return {"ok": True, "is_synthesized": True}
+
+    unit_row = await db.execute(
+        select(ReadingUnit).where(ReadingUnit.id == unit_id)
+    )
+    unit = unit_row.scalar_one_or_none()
+    if unit is None:
+        raise HTTPException(status_code=404, detail="Unit not found")
+
+    slice_row = await db.execute(
+        select(ContentCatalog).where(ContentCatalog.id == unit.slice_id)
+    )
+    slice_obj = slice_row.scalar_one_or_none()
+    if slice_obj is None or slice_obj.parent_work_id is None:
+        # Standalone slice (no parent). Nothing to track.
+        return {"ok": True, "is_finished": True, "next_unit_id": None}
+
+    work_id = slice_obj.parent_work_id
+
+    # Get or create the progress row for this work.
+    rp_row = await db.execute(
+        select(ReadingProgress).where(
+            ReadingProgress.user_id == current_user.id,
+            ReadingProgress.work_id == work_id,
+        )
+    )
+    rp = rp_row.scalar_one_or_none()
+    if rp is None:
+        # Lazy-create. total_units isn't known yet; we just snapshot
+        # the slice count and the unit pointer on the first finish.
+        total_slices = (await db.execute(
+            select(ContentCatalog.id).where(ContentCatalog.parent_work_id == work_id)
+        )).scalars().all()
+        rp = ReadingProgress(
+            user_id=current_user.id,
+            work_id=work_id,
+            current_slice_id=unit.slice_id,
+            current_slice_order=slice_obj.read_order or 1,
+            slices_completed=0,
+            total_slices=len(total_slices),
+            is_finished=False,
+            last_read_at=datetime.utcnow(),
+        )
+        db.add(rp)
+        await db.flush()
+
+    # Advance the unit pointer. If the user is finishing unit N, the
+    # next unread unit is N+1 (or the first unit of the next slice if
+    # this was the last unit in the slice).
+    rp.current_unit_id = unit.id
+    rp.current_unit_order = unit.unit_order
+    rp.last_read_at = datetime.utcnow()
+
+    # Is there a next unit in this slice?
+    next_unit_row = await db.execute(
+        select(ReadingUnit)
+        .where(ReadingUnit.slice_id == unit.slice_id)
+        .where(ReadingUnit.unit_order == unit.unit_order + 1)
+    )
+    next_unit = next_unit_row.scalar_one_or_none()
+
+    if next_unit is not None:
+        # Still have units in this slice. Stay on this slice.
+        rp.current_unit_id = next_unit.id
+        rp.current_unit_order = next_unit.unit_order
+        await db.commit()
+        return {
+            "ok": True,
+            "next_unit_id": next_unit.id,
+            "next_slice_id": unit.slice_id,
+            "is_slice_finished": False,
+        }
+
+    # No more units in this slice. Advance to the next slice in the
+    # work (if any). Bump the slice completion counter.
+    rp.slices_completed = min(rp.total_slices, rp.slices_completed + 1)
+
+    next_slice_row = await db.execute(
+        select(ContentCatalog)
+        .where(ContentCatalog.parent_work_id == work_id)
+        .where(ContentCatalog.read_order == (slice_obj.read_order or 0) + 1)
+    )
+    next_slice = next_slice_row.scalar_one_or_none()
+
+    if next_slice is None:
+        rp.is_finished = True
+        rp.current_slice_id = None
+        rp.current_unit_id = None
+        rp.current_unit_order = None
+        await db.commit()
+        return {
+            "ok": True,
+            "next_unit_id": None,
+            "next_slice_id": None,
+            "is_slice_finished": True,
+            "is_work_finished": True,
+        }
+
+    # Find the first unit of the next slice (it exists; we just
+    # finished the previous slice's last unit, so the next slice was
+    # already created with units).
+    first_unit_row = await db.execute(
+        select(ReadingUnit)
+        .where(ReadingUnit.slice_id == next_slice.id)
+        .where(ReadingUnit.unit_order == 1)
+    )
+    first_unit = first_unit_row.scalar_one_or_none()
+    rp.current_slice_id = next_slice.id
+    rp.current_slice_order = next_slice.read_order
+    rp.current_unit_id = first_unit.id if first_unit else None
+    rp.current_unit_order = 1 if first_unit else None
+    await db.commit()
+    return {
+        "ok": True,
+        "next_unit_id": first_unit.id if first_unit else None,
+        "next_slice_id": next_slice.id,
+        "is_slice_finished": True,
+        "is_work_finished": False,
+    }

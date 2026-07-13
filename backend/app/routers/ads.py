@@ -339,9 +339,13 @@ async def _verify_admob_ssv_signature(
         return False
 
     # Extract the data that was signed: everything before &signature=
+    # or ?signature= (the latter when signature is the first query param).
     sig_idx = raw_query_string.find("&signature=")
     if sig_idx == -1:
-        return False
+        if raw_query_string.startswith("signature="):
+            sig_idx = 0
+        else:
+            return False
     signed_data = raw_query_string[:sig_idx]
 
     # Base64url decode the signature (no padding, - and _ instead of + and /)

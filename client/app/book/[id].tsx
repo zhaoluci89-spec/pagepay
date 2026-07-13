@@ -2,6 +2,7 @@ import { useMemo, useState, useEffect, useCallback } from 'react';
 import {
   Platform,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -15,9 +16,12 @@ import { useTranslation } from 'react-i18next';
 
 import { apiFetch } from '@/src/shared/api/client';
 import { NativeAdBanner } from '@/components/ads/NativeAdBanner';
+import { AttributionCard } from '@/components/AttributionCard';
+import { SocialBar } from '@/components/SocialBar';
 import { PagePay } from '@/constants/theme';
 import { useEffectiveScheme } from '@/src/shared/hooks/use-effective-scheme';
 import { SkeletonDetailPage } from '@/components/skeletons';
+import { useWorkSocial, useLogWorkShare } from '@/src/features/works/hooks/use-works';
 
 type SliceSummary = {
   id: number;
@@ -36,6 +40,12 @@ type BookDetail = {
   content_type: string;
   is_sliced: boolean;
   slices: SliceSummary[];
+  // Education + attribution fields, populated on OpenStax content.
+  source: string | null;
+  education_level: string | null;
+  subject: string | null;
+  license_type: string | null;
+  attribution_text: string | null;
 };
 
 type ResumeState = {

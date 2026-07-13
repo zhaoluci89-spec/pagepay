@@ -274,17 +274,9 @@ export default function ReaderScreen() {
     sessionIdRef.current = json.session_id;
   };
 
-  const endSession = async (sid: number) => {
+  const endSession = async (sid: number): Promise<SessionEndResponse | null> => {
     console.log('[Reader] endSession called for session ID:', sid);
     try {
-      // Manual finish path: endSession is being driven by the user
-      // (Finish & claim, Skip, no-claim advance). Mark the session as
-      // "manually finished" so the unmount cleanup at the top of this file
-      // does NOT call endSession a second time as the screen tears down.
-      // Without this, the cleanup would re-POST /session/end after we've
-      // already navigated, and on a slow network the catch block's
-      // router.replace('/(tabs)') would visibly flicker the user back to
-      // Home after they just landed on the book detail.
       finishedManuallyRef.current = true;
       console.log('[Reader] Calling /session/end...');
       const res = await apiFetch('/api/v1/session/end', {
@@ -298,35 +290,12 @@ export default function ReaderScreen() {
         console.error(
           `End session: non-JSON response (${res.status}) from /session/end: ${body.slice(0, 200)}`,
         );
-        return;
+        return null;
       }
-      const json = (await res.json()) as SessionEndResponse;
-      console.log('[Reader] Session ended, response:', json);
-      // Two-stage close:
-      //   1. /session/end STAGED pending_points but did not credit.
-      //   2. NO auto-claim — points come exclusively from ad revenue,
-      //      not from reading time. The post-read ad already credited
-      //      the user via the AdMob SSV callback (driven by the
-      //      /ads/request-token + /ads/recent-credits flow) before
-      //      this runs.
-      //   3. /progress/finish advances the slice pointer regardless of
-      //      whether the session earned points (skipped or too-short
-      //      sessions still advance — the user did the read).
-      console.log('[Reader] Finishing progress...');
-      try {
-        await apiFetch(`/api/v1/progress/finish?slice_id=${Number(id)}`, { method: 'POST' });
-        console.log('[Reader] Progress finished');
-      } catch (e) {
-        console.warn('Progress finish failed', e);
-      }
-      // Return to the book detail so the user sees the next slice
-      // unlocked and chooses when to start it.
-      // Use back() instead of replace() so the navigation stack stays
-      // clean: Home → Book → Reader → back() → Book (not Book → Book).
-      router.back();
+      return (await res.json()) as SessionEndResponse;
     } catch (e) {
       console.error('End session failed', e);
-      router.back();
+      return null;
     }
   };
 
@@ -447,42 +416,59 @@ export default function ReaderScreen() {
   }) => {
     console.log('[Reader] Post-read ad claimed, closing modal and ending session...');
     setPostReadAdOpen(false);
-    // Reset finish button state
     finishFiredRef.current = false;
-    // Ad reward already credited (or pending) by the SSV
-    // flow. Invalidate queries to refresh the wallet
-    // display.
     queryClient.invalidateQueries({ queryKey: ['me'] });
     queryClient.invalidateQueries({ queryKey: ['wallet'] });
 
-    if (sessionIdRef.current) {
-      console.log('[Reader] Calling endSession with ID:', sessionIdRef.current);
-      await endSession(sessionIdRef.current);
-      console.log('[Reader] endSession completed');
-    } else {
-      console.warn('[Reader] No session ID, navigating to tabs');
+    if (!sessionIdRef.current) {
       router.replace('/(tabs)');
+      return;
     }
+
+    const endRes = await endSession(sessionIdRef.current);
+
+    if (endRes?.requires_claim && endRes.pending_points > 0) {
+      try {
+        await apiFetch('/api/v1/session/claim', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_id: sessionIdRef.current }),
+        });
+        queryClient.invalidateQueries({ queryKey: ['me'] });
+        queryClient.invalidateQueries({ queryKey: ['wallet'] });
+      } catch (e) {
+        console.warn('Session claim failed', e);
+        router.back();
+        return;
+      }
+    }
+
+    try {
+      await apiFetch(`/api/v1/progress/finish?slice_id=${Number(id)}`, { method: 'POST' });
+    } catch (e) {
+      console.warn('Progress finish failed', e);
+    }
+    router.back();
   };
 
   const onPostReadAdSkipped = async () => {
-    // User skipped the second ad — still close out the session, still
-    // advance the slice pointer, but forfeit the points (we don't
-    // /session/claim, so pending_points stays staged and unclaimed on
-    // the row). Same forfeit model as before, just initiated by the
-    // modal being dismissed without watching.
     console.log('[Reader] Post-read ad skipped, closing modal and ending session...');
     setPostReadAdOpen(false);
-    // Reset finish button state
     finishFiredRef.current = false;
-    if (sessionIdRef.current) {
-      console.log('[Reader] Calling endSession with ID:', sessionIdRef.current);
-      await endSession(sessionIdRef.current);
-      console.log('[Reader] endSession completed');
-    } else {
-      console.warn('[Reader] No session ID, navigating to tabs');
+
+    if (!sessionIdRef.current) {
       router.replace('/(tabs)');
+      return;
     }
+
+    await endSession(sessionIdRef.current);
+
+    try {
+      await apiFetch(`/api/v1/progress/finish?slice_id=${Number(id)}`, { method: 'POST' });
+    } catch (e) {
+      console.warn('Progress finish failed', e);
+    }
+    router.back();
   };
 
   if (loading) {

@@ -137,7 +137,10 @@ from app.database import get_db
 from app.models import ContentCatalog, ReadingProgress
 from app.routers.auth import get_current_user
 from app.models import User
-from app.schemas import ContentItem, ContentDetail, ContinueReading, BookDetail, SliceSummary, ResumeState
+from app.schemas import (
+    ContentItem, ContentDetail, ContinueReading, BookDetail, SliceSummary,
+    ResumeState, ContentFilterResponse,
+)
 from app.services.content.gutendex import import_gutendex
 from app.services.content.slicing import force_reslice_all
 from app.config import settings
@@ -269,6 +272,11 @@ async def get_content_feed(
             author=item.author,
             estimated_read_minutes=item.estimated_read_minutes,
             is_sponsored=item.is_sponsored,
+            source=item.source,
+            education_level=item.education_level,
+            subject=item.subject,
+            license_type=item.license_type,
+            attribution_text=item.attribution_text,
         )
         for item in merged
     ]
@@ -283,6 +291,18 @@ async def list_catalog(
         False,
         description="If true, omit works the current user has finished reading. Requires auth.",
     ),
+    education_level: str | None = Query(
+        None,
+        description="Filter by education level: creche | primary | secondary | tertiary | research",
+    ),
+    subject: str | None = Query(
+        None,
+        description="Filter by subject: physics | mathematics | biology | chemistry | economics | psychology | statistics",
+    ),
+    source: str | None = Query(
+        None,
+        description="Filter by source: gutendex | openstax | gnews",
+    ),
     db: AsyncSession = Depends(get_db),
     current_user: User | None = Depends(get_current_user_optional),
 ):
@@ -294,10 +314,22 @@ async def list_catalog(
 
     `exclude_read=true` requires auth and filters out works the user has
     marked finished. Pass false (default) for an anonymous browser view.
+
+    Education filters (`education_level`, `subject`, `source`) are
+    designed for the Catalog tab's level grid + subject chips. They
+    return education content only when set; NULL on those columns
+    means casual reader content, so a request with no filters returns
+    the full mixed catalog.
     """
     stmt = select(ContentCatalog).where(ContentCatalog.parent_work_id.is_(None))
     if category:
         stmt = stmt.where(ContentCatalog.category == category)
+    if education_level:
+        stmt = stmt.where(ContentCatalog.education_level == education_level)
+    if subject:
+        stmt = stmt.where(ContentCatalog.subject == subject)
+    if source:
+        stmt = stmt.where(ContentCatalog.source == source)
 
     if exclude_read:
         if current_user is None:
@@ -322,9 +354,54 @@ async def list_catalog(
             author=item.author,
             estimated_read_minutes=item.estimated_read_minutes,
             is_sponsored=item.is_sponsored,
+            source=item.source,
+            education_level=item.education_level,
+            subject=item.subject,
+            license_type=item.license_type,
+            attribution_text=item.attribution_text,
         )
         for item in items
     ]
+
+
+@router.get("/filters", response_model=ContentFilterResponse)
+async def get_content_filters(db: AsyncSession = Depends(get_db)):
+    """Distinct values for the catalog filter axes.
+
+    Powers the level grid + subject chips on the Catalog tab. The
+    client fetches this on first Catalog render and caches it. The
+    response is a list of strings for each axis, in alphabetical
+    order, with NULLs excluded.
+
+    Why a separate endpoint: querying the catalog itself for "what
+    levels exist?" forces a full scan + GROUP BY on every request.
+    A lightweight /filters endpoint is cached aggressively and keeps
+    the catalog query plan simple.
+    """
+    # DISTINCT values for each axis. We use a SELECT DISTINCT col
+    # pattern; PostgreSQL/MySQL both optimize this to a loose index
+    # scan when the column is indexed.
+    levels_rows = await db.execute(
+        select(ContentCatalog.education_level)
+        .where(ContentCatalog.education_level.is_not(None))
+        .distinct()
+    )
+    subjects_rows = await db.execute(
+        select(ContentCatalog.subject)
+        .where(ContentCatalog.subject.is_not(None))
+        .distinct()
+    )
+    sources_rows = await db.execute(
+        select(ContentCatalog.source).distinct()
+    )
+    levels = sorted(r for (r,) in levels_rows.all() if r)
+    subjects = sorted(r for (r,) in subjects_rows.all() if r)
+    sources = sorted(r for (r,) in sources_rows.all() if r)
+    return ContentFilterResponse(
+        education_levels=levels,
+        subjects=subjects,
+        sources=sources,
+    )
 
 
 @router.get("/continue", response_model=ContinueReading)
@@ -495,6 +572,11 @@ async def get_book_detail(
         content_type=work.content_type,
         is_sliced=is_sliced,
         slices=slices,
+        source=work.source,
+        education_level=work.education_level,
+        subject=work.subject,
+        license_type=work.license_type,
+        attribution_text=work.attribution_text,
     )
 
 

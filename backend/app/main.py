@@ -26,6 +26,7 @@ from app.routers.admin import router as admin_router
 from app.routers.config import router as config_router
 from app.routers.tasks import router as tasks_router
 from app.routers.sponsor import router as sponsor_router
+from app.routers.works_social import router as works_social_router
 from app.seed import run_all_seeds, run_migrations
 from app.services.task_processor import task_processor
 from app.services.ai_verification import verification_service
@@ -240,3 +241,6 @@ app.include_router(pin.router, prefix=API_PREFIX)
 
 # Phase 8: Bills & Earn
 app.include_router(bills.router, prefix=API_PREFIX)
+
+# OpenStax + work-level social (Phase: OpenStax integration)
+app.include_router(works_social_router, prefix=API_PREFIX)

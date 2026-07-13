@@ -24,6 +24,18 @@ import { NativeAdBanner } from '@/components/ads/NativeAdBanner';
 import { PagePay } from '@/constants/theme';
 import { useEffectiveScheme } from '@/src/shared/hooks/use-effective-scheme';
 
+// Education level options for the catalog level grid. Each entry has
+// a label (English, the i18n key is for future localization) and a
+// short label for the expanded grid card. The order is from primary
+// education up to research — a 6-cell row that fits the spec.
+const LEVEL_OPTIONS: ReadonlyArray<{ value: string; label: string; emoji: string }> = [
+  { value: 'creche', label: 'Creche', emoji: '🧸' },
+  { value: 'primary', label: 'Primary', emoji: '📐' },
+  { value: 'secondary', label: 'Secondary', emoji: '🔬' },
+  { value: 'tertiary', label: 'University', emoji: '🎓' },
+  { value: 'research', label: 'Research', emoji: '📄' },
+];
+
 // Anonymous-browse fallback for the per-user sponsored shuffle. Any
 // fixed value works — the shuffle is stable per-id so the same
 // anonymous user sees the same ad order between page refreshes.
@@ -42,6 +54,13 @@ export default function CatalogScreen() {
   // already filtered.
   const storeCategory = useCatalogFilter((s) => s.category);
   const setStoreCategory = useCatalogFilter((s) => s.setCategory);
+
+  // Education filters. We keep these as local state rather than
+  // store state because they're transient — the user picks a level
+  // for one browse session, not as a global preference. Local state
+  // is also cleared when the user navigates away and back.
+  const [educationLevel, setEducationLevel] = useState<string | null>(null);
+  const [levelGridExpanded, setLevelGridExpanded] = useState(false);
 
   const [refreshing, setRefreshing] = useState(false);
 
@@ -100,10 +119,11 @@ export default function CatalogScreen() {
   const filters = useMemo(() => [t('catalog.filter_all'), ...categories] as const, [categories, t]);
 
   const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ['feed', userId, storeCategory],
+    queryKey: ['feed', userId, storeCategory, educationLevel],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (storeCategory) params.set('category', storeCategory);
+      if (educationLevel) params.set('education_level', educationLevel);
       params.set('limit', '50');
       const url = `/api/v1/content/feed/${userId}?${params.toString()}`;
       const res = await apiFetch(url);
@@ -159,6 +179,36 @@ export default function CatalogScreen() {
       </View>
 
       <View style={styles.filterRow}>
+        {/* Education level pill — collapsed by default. Tap to expand
+            the 5-cell grid; tap a cell to filter by that level. The
+            pill text reflects the current selection. */}
+        <TouchableOpacity
+          style={[
+            styles.levelPill,
+            {
+              backgroundColor: educationLevel ? tokens.mint : tokens.card,
+              borderColor: educationLevel ? tokens.mint : tokens.border,
+            },
+          ]}
+          onPress={() => setLevelGridExpanded((v) => !v)}
+          accessibilityRole="button"
+          accessibilityLabel={educationLevel ? `Level: ${educationLevel}. Tap to change.` : 'Browse by education level'}
+        >
+          <Ionicons name="school-outline" size={14} color={educationLevel ? tokens.mintText : tokens.inkMuted} />
+          <Text style={[
+            styles.levelPillText,
+            { color: educationLevel ? tokens.mintText : tokens.inkMuted },
+          ]}>
+            {educationLevel
+              ? LEVEL_OPTIONS.find((l) => l.value === educationLevel)?.label ?? 'Education'
+              : 'Education'}
+          </Text>
+          <Ionicons
+            name={levelGridExpanded ? 'chevron-up' : 'chevron-down'}
+            size={12}
+            color={educationLevel ? tokens.mintText : tokens.inkMuted}
+          />
+        </TouchableOpacity>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -177,6 +227,44 @@ export default function CatalogScreen() {
           })}
         </ScrollView>
       </View>
+
+      {/* Expanded level grid. The grid is only mounted when expanded
+          to keep the collapsed state cheap. Each cell is 1/3 of the
+          row width on small phones, 1/5 on larger. */}
+      {levelGridExpanded && (
+        <View style={styles.levelGrid}>
+          {LEVEL_OPTIONS.map((opt) => {
+            const selected = educationLevel === opt.value;
+            return (
+              <TouchableOpacity
+                key={opt.value}
+                style={[
+                  styles.levelCell,
+                  {
+                    borderColor: selected ? tokens.mint : tokens.border,
+                    backgroundColor: selected ? tokens.mintSoft : tokens.card,
+                  },
+                ]}
+                onPress={() => {
+                  setEducationLevel(selected ? null : opt.value);
+                  setLevelGridExpanded(false);
+                }}
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
+                accessibilityLabel={`Filter by ${opt.label}`}
+              >
+                <Text style={styles.levelEmoji}>{opt.emoji}</Text>
+                <Text style={[
+                  styles.levelLabel,
+                  { color: selected ? tokens.mint : tokens.ink },
+                ]}>
+                  {opt.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      )}
 
       {storeCategory ? (
         <TouchableOpacity
@@ -306,7 +394,49 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   filterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingVertical: 8,
+    gap: 8,
+    paddingLeft: 16,
+  },
+  levelPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  levelPillText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  levelGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 4,
+    gap: 8,
+  },
+  levelCell: {
+    flexBasis: '18%',
+    minWidth: 64,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+  },
+  levelEmoji: {
+    fontSize: 20,
+    marginBottom: 4,
+  },
+  levelLabel: {
+    fontSize: 10,
+    fontWeight: '600',
   },
   clearRow: {
     flexDirection: 'row',

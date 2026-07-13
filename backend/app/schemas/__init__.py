@@ -125,6 +125,14 @@ class ContentItem(BaseModel):
     author: str | None
     estimated_read_minutes: int
     is_sponsored: bool
+    # Education + attribution fields. Optional so existing callers
+    # (e.g. the casual reader feed) keep working when these are NULL
+    # on a non-education row.
+    source: str | None = None
+    education_level: str | None = None
+    subject: str | None = None
+    license_type: str | None = None
+    attribution_text: str | None = None
 
 
 class ContentDetail(BaseModel):
@@ -239,6 +247,13 @@ class BookDetail(BaseModel):
     content_type: str
     is_sliced: bool
     slices: list[SliceSummary] = []
+    # Education + attribution fields. Same nullable pattern as
+    # ContentItem: NULL on casual reader content, populated on OpenStax.
+    source: str | None = None
+    education_level: str | None = None
+    subject: str | None = None
+    license_type: str | None = None
+    attribution_text: str | None = None
 
 
 class ResumeState(BaseModel):
@@ -1276,3 +1291,151 @@ class LegalPageResponse(BaseModel):
     title: str
     content: str
     updated_at: datetime
+
+
+# ── OpenStax + work-level social schemas (Phase: OpenStax integration) ──
+#
+# These schemas back the 6 work-social endpoints (works_social router)
+# and the unit-listing endpoint (progress router). The comment schema
+# mirrors CommunityNoteCreate for consistency — the same 1-2000 char
+# cap, the same XSS-strip-on-write contract.
+
+
+class WorkLikeToggleResponse(BaseModel):
+    """Response for POST /works/{id}/like.
+
+    `liked` reflects the post-toggle state (true if the user now likes
+    the work, false if the like was removed). `likes_count` is the new
+    total across all users.
+    """
+    liked: bool
+    likes_count: int
+
+
+class WorkCommentCreate(BaseModel):
+    """POST /works/{id}/comments body.
+
+    `body` is 1-2000 chars. Empty comments are rejected at the field
+    validator; whitespace-only comments are also rejected by the
+    post-strip length check in the router.
+
+    `parent_comment_id` enables 1-level reply threading. We do not
+    support replies-to-replies in v1 — if a parent already has a
+    parent_comment_id, the router treats the new comment as a top-
+    level reply to the original thread (flattens).
+    """
+    body: str = Field(min_length=1, max_length=2000)
+    parent_comment_id: int | None = None
+
+
+class WorkCommentItem(BaseModel):
+    """One comment in the thread response.
+
+    `author_name` is the user's display name (email/phone fallback to
+    "Reader" for privacy — the same convention as CommunityFeedItem).
+
+    `likes_count` is the count of work_comment_likes rows pointing at
+    this comment.
+
+    `is_liked` is true if the requesting user has liked this comment;
+    false for anonymous requests.
+
+    `replies` is the count of child replies (we don't expand them in
+    v1 — the UI shows the count and a "View replies" link).
+    """
+    id: int
+    user_id: int
+    work_id: int
+    body: str
+    parent_comment_id: int | None
+    status: str
+    created_at: datetime
+    author_name: str | None = None
+    likes_count: int = 0
+    is_liked: bool = False
+    replies: int = 0
+
+
+class WorkCommentFeedResponse(BaseModel):
+    """GET /works/{id}/comments response.
+
+    `total` is the count of approved comments on the work (so the UI
+    can show "23 comments" without a second fetch). `comments` is the
+    paginated window.
+    """
+    total: int
+    comments: list[WorkCommentItem]
+
+
+class WorkShareRequest(BaseModel):
+    """POST /works/{id}/share body.
+
+    `platform` is one of a fixed allowlist. We don't validate the
+    string here — the router does, with a 400 on unknown platforms.
+    """
+    platform: str = Field(min_length=1, max_length=50)
+
+
+class WorkShareResponse(BaseModel):
+    """Response for POST /works/{id}/share. Returns the new total share
+    count for the work, used by the catalog card to show share counts
+    in a future iteration (v1 logs analytics only, not on the card)."""
+    shares_count: int
+
+
+class WorkSocialResponse(BaseModel):
+    """GET /works/{id}/social response — the aggregate for a card.
+
+    Used by the catalog and trending feeds to render like/comment/share
+    counts without making 3 separate calls. The first three are
+    absolute counts; `is_liked` reflects the requesting user's state
+    (false for anonymous requests).
+    """
+    work_id: int
+    likes_count: int
+    comments_count: int
+    shares_count: int
+    is_liked: bool
+
+
+class ReadingUnitItem(BaseModel):
+    """One unit in the slice's unit list.
+
+    `is_unlocked` is the gate result: true if the user can read this
+    unit. For OpenStax content, unit 1 of every slice is always
+    unlocked; units 2+ unlock when the previous unit is completed
+    OR the user has premium tier.
+
+    `is_completed` is true if the user has finished this unit. The
+    `current_unit_order` on the work's ReadingProgress row is the
+    pointer — a unit is "completed" if its order is < current.
+
+    `unlock_reason` is a human-readable hint for the UI: "premium"
+    (pay to unlock), "complete_previous" (read unit N-1), or
+    "free" (always unlocked). null when `is_unlocked` is true.
+    """
+    id: int
+    unit_order: int
+    total_units: int
+    is_unlocked: bool
+    is_completed: bool
+    estimated_read_minutes: int
+    unlock_reason: str | None = None
+
+
+class ReadingUnitListResponse(BaseModel):
+    """GET /progress/units/{slice_id} response."""
+    slice_id: int
+    units: list[ReadingUnitItem]
+
+
+class ContentFilterResponse(BaseModel):
+    """Catalog filter response — what values exist for each filter axis.
+
+    Powers the level grid + subject chips on the Catalog tab. The
+    client fetches this on first Catalog render and caches it.
+    Returns empty lists for axes with no matching content.
+    """
+    education_levels: list[str]
+    subjects: list[str]
+    sources: list[str]

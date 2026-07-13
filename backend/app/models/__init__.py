@@ -152,6 +152,27 @@ class ContentCatalog(Base):
     word_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     char_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
+    # ── Education + attribution fields (Phase: OpenStax integration) ──
+    # `source` distinguishes casual reader content (gutendex/gnews) from
+    # education content (openstax). The reader uses this to skip the
+    # ad-gate / 1-min timer / point-earning flow for education rows.
+    source: Mapped[str] = mapped_column(String(50), default="gutendex", index=True)
+    # `education_level` is the creche/primary/secondary/tertiary/research
+    # bucket used by the catalog's level filter. NULL on non-education rows.
+    education_level: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
+    # `subject` is the broad academic subject (physics, mathematics, …).
+    # Multiple books can share a subject; this drives subject filter chips.
+    subject: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    # `license_type` is the content's license. Ingestion is the gatekeeper:
+    # only CC BY 4.0 / CC BY-SA 4.0 / public_domain are allowed into the
+    # catalog. Anything NC is rejected at the ingest boundary.
+    license_type: Mapped[str] = mapped_column(String(50), default="public_domain")
+    # `attribution_text` is the pre-formatted attribution string the
+    # AttributionCard component renders verbatim. We pre-format at ingest
+    # time so the UI never has to reconstruct the license string from
+    # separate fields.
+    attribution_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+
 
 class AdEvent(Base):
     __tablename__ = "ad_events"
@@ -236,6 +257,16 @@ class ReadingProgress(Base):
     is_finished: Mapped[bool] = mapped_column(Boolean, default=False)
     last_read_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    # ── Education unit pointer (Phase: OpenStax integration) ────────
+    # Education content is sliced by topic (one topic = one slice), then
+    # each slice is further chunked into 1-2 minute ReadingUnits. Units
+    # within a slice are locked: unit 2+ of a topic is gated behind either
+    # completing the previous unit or having premium tier. Casual reader
+    # content (gutendex/gnews) has exactly 1 unit per slice, so these
+    # columns stay NULL and the existing reader flow is unchanged.
+    current_unit_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    current_unit_order: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class SliceBookmark(Base):
@@ -1172,3 +1203,152 @@ class FCMToken(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+# ════════════════════════════════════════════════════════════════════════
+# Phase: OpenStax integration + work-level social features
+# ════════════════════════════════════════════════════════════════════════
+#
+# These five tables were added to support education content from OpenStax
+# and the social features (likes / comments / share) at the work level.
+# Reuses the same UNIQUE(user_id, target_id) pattern as CommunityLike and
+# CommunityNote for consistency with existing code.
+#
+
+
+class ReadingUnit(Base):
+    """A 1-2 minute reading chunk within a topic-sized slice.
+
+    Education content (OpenStax) is sliced by topic first (one topic = one
+    child row in content_catalog), then each topic is further chunked into
+    ReadingUnits. Units within a slice are locked: unit 1 of every topic is
+    free, units 2+ unlock when the user reads the previous unit OR has
+    premium tier. Casual reader content (gutendex / gnews) has exactly 1
+    unit per slice — generated automatically on first read so the existing
+    1-min timer / heart-beat / SSV flow continues to work unchanged.
+
+    `unit_order` is 1-indexed within the slice. `total_units` is denormalized
+    from the count of units for the same slice for fast list rendering.
+    `body_text` is the actual prose for this unit; it MUST end on a
+    sentence boundary (`.` / `!` / `?` followed by whitespace or EOF) — see
+    topic_slicer.py for the full-stop rule.
+
+    Indexes:
+      - (slice_id, unit_order) is unique so duplicates can't be inserted.
+      - slice_id is indexed because the unit list is fetched per slice.
+    """
+
+    __tablename__ = "reading_units"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True, autoincrement=True)
+    slice_id: Mapped[int] = mapped_column(BigInteger, index=True, nullable=False)
+    unit_order: Mapped[int] = mapped_column(Integer, nullable=False)
+    total_units: Mapped[int] = mapped_column(Integer, nullable=False)
+    body_text: Mapped[str] = mapped_column(Text, nullable=False)
+    char_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    word_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    estimated_read_minutes: Mapped[int] = mapped_column(Integer, default=2)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class WorkLike(Base):
+    """A user's like on a work (the parent book, NOT a child slice).
+
+    Likes are scoped to the work because:
+      1. Casual readers think in books, not slices — "I liked Pride &
+         Prejudice" is a meaningful statement; "I liked Part 3 of Pride &
+         Prejudice" is not.
+      2. Reuses the existing CommunityLike UNIQUE pattern.
+      3. Avoids slice-noise: a book has 100+ slices, so per-slice likes
+         would be a 100x data explosion with negligible UX benefit.
+
+    work_id is the parent content_catalog.id (the unsliced book). For
+    standalone slices (parent_work_id IS NULL), like the slice directly
+    by setting work_id = slice.id — the catalog UI handles both cases.
+
+    UNIQUE(user_id, work_id) is the idempotency guarantee. Toggling a
+    like is "delete if exists, insert if not" — never accumulates.
+    """
+
+    __tablename__ = "work_likes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, index=True, nullable=False)
+    work_id: Mapped[int] = mapped_column(BigInteger, index=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class WorkComment(Base):
+    """A comment on a work (parent book), forming one discussion thread.
+
+    One thread per work — slices do NOT get their own threads. The
+    conversation is about the book as a whole, not any specific 1-min
+    read of it. This matches the user mental model: "comments on this
+    book" not "comments on this 2-minute window."
+
+    `parent_comment_id` enables 1-level reply threading (a comment can
+    reply to another comment, but not to a reply). Phase 1 ships flat
+    threading only — the column exists for a future 1.1 release if
+    threading demand is real.
+
+    `status` mirrors CommunityNote.status for moderation:
+      - 'approved' — visible by default
+      - 'pending' — flagged for moderator review (cheating-help filter)
+      - 'rejected' — hidden by moderator
+
+    `body` is TEXT with a 1-2000 char check at the application layer.
+    The DB-level CHECK is intentionally absent because MySQL's behavior
+    with CHECK constraints is unreliable; we enforce in the router.
+    """
+
+    __tablename__ = "work_comments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, index=True, nullable=False)
+    work_id: Mapped[int] = mapped_column(BigInteger, index=True, nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    parent_comment_id: Mapped[int | None] = mapped_column(
+        BigInteger, nullable=True, index=True
+    )
+    status: Mapped[str] = mapped_column(String(20), default="approved", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+
+class WorkCommentLike(Base):
+    """A user's like on a comment.
+
+    UNIQUE(user_id, comment_id) so double-taps don't accumulate. Separate
+    from WorkLike because the like is on a different entity (a comment,
+    not a work) and the count surfaces differently in the UI (small
+    number next to each comment, not a big number on a book card).
+    """
+
+    __tablename__ = "work_comment_likes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, index=True, nullable=False)
+    comment_id: Mapped[int] = mapped_column(BigInteger, index=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class WorkShare(Base):
+    """A share event — logged for analytics only.
+
+    No UNIQUE constraint: every share event is a new row so we can
+    measure viral coefficient (shares per user per book per platform).
+    `platform` is one of 'whatsapp' | 'twitter' | 'facebook' | 'instagram'
+    | 'copy' | 'email' | 'other' (extracted client-side from the share
+    sheet choice). We do NOT store the recipient — only that a share
+    happened, by whom, on what, where.
+    """
+
+    __tablename__ = "work_shares"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, index=True, nullable=False)
+    work_id: Mapped[int] = mapped_column(BigInteger, index=True, nullable=False)
+    platform: Mapped[str] = mapped_column(String(50), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
