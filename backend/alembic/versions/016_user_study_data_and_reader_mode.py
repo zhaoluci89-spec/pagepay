@@ -1,7 +1,7 @@
 """Add users.study_data JSON blob and reading_progress.reader_mode for the v3
 Study + 3-mode reader.
 
-Revision ID: 016_user_study_data_and_reader_mode
+Revision ID: 016_study_reader_mode
 Revises: 015_add_content_class_level
 Create Date: 2026-07-13 22:30:00.000000
 
@@ -51,7 +51,7 @@ from alembic import op
 
 
 # revision identifiers, used by Alembic.
-revision: str = "016_user_study_data_and_reader_mode"
+revision: str = "016_study_reader_mode"
 down_revision: Union[str, None] = "015_add_content_class_level"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None

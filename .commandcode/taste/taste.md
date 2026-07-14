@@ -1,6 +1,7 @@
 # Taste (Continuously Learned by [CommandCode][cmd])
 
 [cmd]: https://commandcode.ai/
+
 
 # workflow
 - When the user provides API credentials (API keys, docs URLs, etc.) for a real service, use the actual API endpoints/data — do not create hardcoded placeholder/mock data as a substitute. The API credentials are provided specifically so the real service is used, not simulated. Confidence: 0.90

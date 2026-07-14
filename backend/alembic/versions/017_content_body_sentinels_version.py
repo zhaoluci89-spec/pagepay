@@ -1,8 +1,8 @@
 """Add content_catalog.body_sentinels_version to gate the v3 reader sentinel
 renderer.
 
-Revision ID: 017_content_body_sentinels_version
-Revises: 016_user_study_data_and_reader_mode
+Revision ID: 017_body_sentinels
+Revises: 016_study_reader_mode
 Create Date: 2026-07-13 22:35:00.000000
 
 Schema additions:
@@ -46,8 +46,8 @@ from alembic import op
 
 
 # revision identifiers, used by Alembic.
-revision: str = "017_content_body_sentinels_version"
-down_revision: Union[str, None] = "016_user_study_data_and_reader_mode"
+revision: str = "017_body_sentinels"
+down_revision: Union[str, None] = "016_study_reader_mode"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

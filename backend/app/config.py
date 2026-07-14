@@ -182,11 +182,11 @@ class Settings(BaseSettings):
     # upstream images. Two-level directory layout (first 2 hex chars
     # of the SHA1 /  the rest) keeps any single dir under ~65k
     # entries, well under ext4's per-dir link budget. Default is
-    # relative to the working directory; production should set
-    # IMAGE_CACHE_DIR=/var/lib/pagepay/image_cache on the Render
-    # disk. The lifespan handler in main.py creates the dir on
-    # startup if it doesn't exist.
-    image_cache_dir: str = "./var/image_cache"
+    # /tmp for Render compatibility (Render filesystem is read-only
+    # except /tmp). Production with persistent disk should set
+    # IMAGE_CACHE_DIR=/var/lib/pagepay/image_cache. The lifespan
+    # handler in main.py creates the dir on startup if it doesn't exist.
+    image_cache_dir: str = "/tmp/pagepay_image_cache"
     # Maximum bytes the proxy will fetch from upstream before
     # refusing (default 5MB). Caps the worst case for a hostile or
     # broken upstream; legitimate OpenStax figures are <500KB.
@@ -201,9 +201,9 @@ class Settings(BaseSettings):
     # Where /api/v1/content/audio/{unit_id}.mp3 serves pre-rendered
     # TTS files (v3 §3.3 Listen mode). Files are organized as
     # units/{shard}/{unit_id}.mp3 where shard is unit_id % 100 (two
-    # digits). Default is relative; production should set
-    # AUDIO_CACHE_DIR=/var/lib/pagepay/audio_cache on the Render disk.
-    audio_cache_dir: str = "./var/audio_cache"
+    # digits). Default is /tmp for Render compatibility. Production
+    # with persistent disk should set AUDIO_CACHE_DIR=/var/lib/pagepay/audio_cache.
+    audio_cache_dir: str = "/tmp/pagepay_audio_cache"
     # TTL for audio files. Same 30-day pattern as image proxy.
     # expo-av caches aggressively on the client, so this is mostly
     # for CDN edge cache (if we ever add one).
