@@ -165,3 +165,104 @@ async def delete_content(
     await db.commit()
     
     return {"success": True}
+
+
+# ── v3 TTS Audio Generation ─────────────────────────────────────────
+
+
+@router.post("/tts/generate-work/{work_id}")
+async def admin_generate_tts_for_work(
+    request: Request,
+    work_id: int,
+    force: bool = Query(False, description="Regenerate existing files"),
+    current_admin: AdminUser = Depends(require_permission("content.import")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Batch-generate TTS audio for all units in a work.
+
+    v3 §3.3 Listen mode. This is the admin endpoint for triggering
+    audio generation per-work. The full catalog job is exposed as
+    /admin/content/tts/generate-all (below).
+
+    Returns:
+        {"units_processed": N} where N is the count of units that
+        had audio generated (or skipped if already present).
+
+    Typical runtime: 5-10 minutes per book (depending on book size).
+    For OpenStax "University Physics Vol 1" (~60 units), expect ~6
+    minutes. The endpoint is synchronous so the admin UI can show a
+    spinner. For production use, this would be better as a background
+    job with a polling endpoint, but for v3 MVP we ship it synchronous.
+    """
+    from app.services.tts import batch_generate_audio_for_work
+
+    try:
+        count = await batch_generate_audio_for_work(
+            db, work_id, force=force, concurrency=5
+        )
+        db.add(
+            _log_admin_action(
+                current_admin.id,
+                current_admin.email,
+                "generate_tts_for_work",
+                "content",
+                work_id,
+                {"units_processed": count, "force": force},
+                request.client.host,
+            )
+        )
+        await db.commit()
+        return {"units_processed": count}
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("TTS generation failed for work %d: %s", work_id, exc)
+        raise HTTPException(
+            status_code=500, detail=f"TTS generation failed: {exc}"
+        ) from exc
+
+
+@router.post("/tts/generate-all")
+async def admin_generate_tts_for_all_works(
+    request: Request,
+    force: bool = Query(False, description="Regenerate existing files"),
+    current_admin: AdminUser = Depends(require_permission("content.import")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Batch-generate TTS audio for ALL works in the catalog.
+
+    v3 §3.3 one-time job. This takes 1-2 hours for the full OpenStax
+    curriculum (12 books, ~800 units). Run once after v3 ships to
+    pre-populate audio, then use /tts/generate-work/{work_id} for
+    incremental updates.
+
+    Returns:
+        {"total_units": N} where N is the total count across all works.
+
+    CAUTION: This is a long-running synchronous endpoint. The admin UI
+    should show a clear "This will take ~1-2 hours" warning before the
+    user clicks. For production, migrate this to a background job with
+    a status poll endpoint.
+    """
+    from app.services.tts import batch_generate_audio_for_all_works
+
+    try:
+        total = await batch_generate_audio_for_all_works(
+            db, force=force, concurrency=5
+        )
+        db.add(
+            _log_admin_action(
+                current_admin.id,
+                current_admin.email,
+                "generate_tts_for_all_works",
+                "content",
+                None,
+                {"total_units": total, "force": force},
+                request.client.host,
+            )
+        )
+        await db.commit()
+        return {"total_units": total}
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("TTS generation failed for all works: %s", exc)
+        raise HTTPException(
+            status_code=500, detail=f"TTS generation failed: {exc}"
+        ) from exc

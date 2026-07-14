@@ -1,4 +1,5 @@
 # All fastapi app settings
+from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import model_validator
 
@@ -175,6 +176,38 @@ class Settings(BaseSettings):
     cloudinary_api_key: str | None = None
     cloudinary_api_secret: str | None = None
     cloudinary_upload_folder: str = "pagepay/tasks"
+
+    # ── v3 image proxy cache ────────────────────────────────────────
+    # Where the /api/v1/content/images/proxy endpoint stores cached
+    # upstream images. Two-level directory layout (first 2 hex chars
+    # of the SHA1 /  the rest) keeps any single dir under ~65k
+    # entries, well under ext4's per-dir link budget. Default is
+    # relative to the working directory; production should set
+    # IMAGE_CACHE_DIR=/var/lib/pagepay/image_cache on the Render
+    # disk. The lifespan handler in main.py creates the dir on
+    # startup if it doesn't exist.
+    image_cache_dir: str = "./var/image_cache"
+    # Maximum bytes the proxy will fetch from upstream before
+    # refusing (default 5MB). Caps the worst case for a hostile or
+    # broken upstream; legitimate OpenStax figures are <500KB.
+    image_proxy_max_bytes: int = 5 * 1024 * 1024
+    # TTL for the cached file. We don't actually expire files on
+    # disk (would need a janitor); we just control the
+    # Cache-Control header so the CDN/client caches for this long.
+    # 30 days matches v3 §2.3.
+    image_proxy_cache_ttl_seconds: int = 30 * 24 * 60 * 60
+
+    # ── v3 audio TTS cache ───────────────────────────────────────────
+    # Where /api/v1/content/audio/{unit_id}.mp3 serves pre-rendered
+    # TTS files (v3 §3.3 Listen mode). Files are organized as
+    # units/{shard}/{unit_id}.mp3 where shard is unit_id % 100 (two
+    # digits). Default is relative; production should set
+    # AUDIO_CACHE_DIR=/var/lib/pagepay/audio_cache on the Render disk.
+    audio_cache_dir: str = "./var/audio_cache"
+    # TTL for audio files. Same 30-day pattern as image proxy.
+    # expo-av caches aggressively on the client, so this is mostly
+    # for CDN edge cache (if we ever add one).
+    audio_cache_ttl_seconds: int = 30 * 24 * 60 * 60
 
     # ── Platform revenue splits ──────────────────────────────────────
     # Ads: portion of ad revenue kept by platform (rest goes to user as points).

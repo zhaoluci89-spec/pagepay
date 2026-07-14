@@ -23,6 +23,7 @@ from app.routers.auth import get_current_user
 from app.schemas import (
     ContinueReading, WorkProgress, BookmarkSave,
     ReadingUnitItem, ReadingUnitListResponse,
+    FinishSliceBody,
 )
 
 router = APIRouter(prefix="/progress", tags=["progress"])
@@ -166,6 +167,11 @@ async def get_continue_reading(
         percent_complete=min(100, percent),
         has_in_progress=True,
         scroll_offset_px=scroll_offset,
+        # v3 §3.4: surface the user's last-picked reader mode so the
+        # reader opens in the right mode without a flash of the
+        # default. rp.reader_mode is guaranteed by the model
+        # default; never None in practice.
+        reader_mode=rp.reader_mode,
     )
 
 
@@ -208,6 +214,11 @@ async def list_in_progress(
                 work_title=work_title,
                 slice_title=slice_title,
                 slice_order=rp.current_slice_order,
+                # Expose the current slice id so the home "Keep Reading"
+                # card can deep-link to /reader/{sliceId} instead of
+                # forcing the user to drill into the book detail screen
+                # and pick a slice. See v3 §4.1.
+                current_slice_id=rp.current_slice_id,
                 total_slices=rp.total_slices,
                 slices_completed=rp.slices_completed,
                 percent_complete=min(100, percent),
@@ -253,6 +264,7 @@ async def save_bookmark(
 @router.post("/finish")
 async def finish_slice(
     slice_id: int,
+    body: "FinishSliceBody | None" = None,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -264,6 +276,11 @@ async def finish_slice(
         (Phase 1.5 — auto-finish on scroll completion)
 
     If this was the last slice in the work, marks the work finished.
+
+    The optional body carries `reader_mode` so the v3 mode switcher
+    can persist per-work preferences. Sending a mode on every finish
+    is a small write but cheap; we only update the column when the
+    value differs to avoid a useless write.
     """
     # Look up the slice to find its parent work.
     slice_row = await db.execute(select(ContentCatalog).where(ContentCatalog.id == slice_id))
@@ -299,9 +316,18 @@ async def finish_slice(
             total_slices=total_count,
             is_finished=False,
             last_read_at=datetime.utcnow(),
+            # Persist the reader's preferred mode on first-finish so
+            # the very next slice opens in the same mode. Default
+            # 'read' matches the DB column default.
+            reader_mode=(body.reader_mode if body and body.reader_mode else "read"),
         )
         db.add(rp)
         await db.flush()
+    elif body and body.reader_mode and body.reader_mode != rp.reader_mode:
+        # Update only when the value actually differs — saves a
+        # useless UPDATE round-trip and keeps the column a clean
+        # audit of the user's last-picked mode per work.
+        rp.reader_mode = body.reader_mode
 
     # Find the next slice by order.
     next_slice_row = await db.execute(

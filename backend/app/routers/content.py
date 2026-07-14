@@ -211,6 +211,18 @@ async def get_content_feed(
         None,
         description="Optional category filter (e.g. 'Fiction', 'News'). Mirrors the /catalog filter.",
     ),
+    education_level: str | None = Query(
+        None,
+        description="Filter by education level: creche | primary | secondary | tertiary | research",
+    ),
+    subject: str | None = Query(
+        None,
+        description="Filter by subject: physics | mathematics | biology | chemistry | economics | psychology | statistics",
+    ),
+    class_level: str | None = Query(
+        None,
+        description="Filter by class level: 'Grade 1' .. 'Grade 12', 'Year 1' .. 'Year 4'.",
+    ),
     db: AsyncSession = Depends(get_db),
 ):
     """The user's content feed with sponsored rotation.
@@ -239,7 +251,12 @@ async def get_content_feed(
     organic_stmt = select(ContentCatalog).where(ContentCatalog.parent_work_id.is_(None))
     if category:
         organic_stmt = organic_stmt.where(ContentCatalog.category.ilike(f"%{category}%"))
-    organic_stmt = organic_stmt.order_by(ContentCatalog.id.asc())
+    if education_level:
+        organic_stmt = organic_stmt.where(ContentCatalog.education_level == education_level)
+    if subject:
+        organic_stmt = organic_stmt.where(ContentCatalog.subject == subject)
+    if class_level:
+        organic_stmt = organic_stmt.where(ContentCatalog.class_level == class_level)
     organic_stmt = organic_stmt.offset((page - 1) * limit).limit(limit)
     organic_rows = (await db.execute(organic_stmt)).scalars().all()
 
@@ -275,6 +292,7 @@ async def get_content_feed(
             source=item.source,
             education_level=item.education_level,
             subject=item.subject,
+            class_level=item.class_level,
             license_type=item.license_type,
             attribution_text=item.attribution_text,
         )
@@ -303,6 +321,24 @@ async def list_catalog(
         None,
         description="Filter by source: gutendex | openstax | gnews",
     ),
+    class_level: str | None = Query(
+        None,
+        description=(
+            "Filter by class level: 'Grade 1' .. 'Grade 12', 'Year 1' .. 'Year 4'. "
+            "Always combine with education_level so creche/research are excluded."
+        ),
+    ),
+    search: str | None = Query(
+        None,
+        max_length=120,
+        description=(
+            "Case-insensitive substring match against title and author. "
+            "Implemented as ILIKE on both columns (OR'd) — fine at the "
+            "current catalog scale (~thousands of rows). If we ever push "
+            "past ~100k rows this is the obvious place to swap in "
+            "tsvector + GIN."
+        ),
+    ),
     db: AsyncSession = Depends(get_db),
     current_user: User | None = Depends(get_current_user_optional),
 ):
@@ -330,6 +366,18 @@ async def list_catalog(
         stmt = stmt.where(ContentCatalog.subject == subject)
     if source:
         stmt = stmt.where(ContentCatalog.source == source)
+    if class_level:
+        stmt = stmt.where(ContentCatalog.class_level == class_level)
+    if search:
+        # ILIKE on title + author. OR'd, not AND'd, so a search for
+        # "physics" matches books with physics in the title *or* a
+        # physics author. The leading + trailing %s make it a substring
+        # match; the f-string is safe because `search` is bounded by
+        # max_length=120 above.
+        pattern = f"%{search}%"
+        stmt = stmt.where(
+            ContentCatalog.title.ilike(pattern) | ContentCatalog.author.ilike(pattern)
+        )
 
     if exclude_read:
         if current_user is None:
@@ -357,6 +405,7 @@ async def list_catalog(
             source=item.source,
             education_level=item.education_level,
             subject=item.subject,
+            class_level=item.class_level,
             license_type=item.license_type,
             attribution_text=item.attribution_text,
         )
@@ -490,6 +539,21 @@ async def get_content(content_id: int, db: AsyncSession = Depends(get_db)):
     item = result.scalar_one_or_none()
     if not item:
         raise HTTPException(status_code=404, detail="Content not found")
+    
+    # v3 §3.3: compute audio_url if this content has reading units.
+    # We fetch the first unit for this content_id (there's typically
+    # only one unit per slice, but if a slice has multiple, we link
+    # to the first — the player UI doesn't loop through units).
+    from app.models import ReadingUnit
+    unit_result = await db.execute(
+        select(ReadingUnit.id)
+        .where(ReadingUnit.content_id == content_id)
+        .order_by(ReadingUnit.order)
+        .limit(1)
+    )
+    unit_id = unit_result.scalar_one_or_none()
+    audio_url = f"/api/v1/content/audio/{unit_id}.mp3" if unit_id else None
+    
     return ContentDetail(
         id=item.id,
         title=item.title,
@@ -500,6 +564,11 @@ async def get_content(content_id: int, db: AsyncSession = Depends(get_db)):
         estimated_read_minutes=item.estimated_read_minutes,
         is_sponsored=item.is_sponsored,
         parent_work_id=item.parent_work_id,
+        # v3 sentinel contract version. 0 for the existing catalog;
+        # the OpenStax ingest will bump this to 1 when it starts
+        # emitting sentinels (separate change, see migration 017).
+        body_sentinels_version=item.body_sentinels_version,
+        audio_url=audio_url,
     )
 
 
@@ -575,6 +644,7 @@ async def get_book_detail(
         source=work.source,
         education_level=work.education_level,
         subject=work.subject,
+        class_level=work.class_level,
         license_type=work.license_type,
         attribution_text=work.attribution_text,
     )

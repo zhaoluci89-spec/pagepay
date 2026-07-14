@@ -131,6 +131,7 @@ class ContentItem(BaseModel):
     source: str | None = None
     education_level: str | None = None
     subject: str | None = None
+    class_level: str | None = None
     license_type: str | None = None
     attribution_text: str | None = None
 
@@ -148,6 +149,17 @@ class ContentDetail(BaseModel):
     # navigate back to /book/[parent_work_id] after finishing. None for
     # standalone slices (no parent work).
     parent_work_id: int | None = None
+    # v3 reader sentinel contract version. 0 (or missing on legacy
+    # rows) = plain text body. 1 = body_text contains v3 sentinels
+    # ([[IMG:…]], Caption: …, [TABLE START]…[TABLE END], [[EQ:…]]).
+    # The reader checks this before parsing. See migration
+    # 017_content_body_sentinels_version.
+    body_sentinels_version: int = 0
+    # v3 §3.3 Listen mode audio URL. Points to the pre-rendered TTS
+    # MP3 at /api/v1/content/audio/{unit_id}.mp3. None if this content
+    # has no audio (standalone articles, or units where TTS hasn't been
+    # generated yet). The reader uses this to enable Listen mode.
+    audio_url: str | None = None
 
 
 class SessionStart(BaseModel):
@@ -202,6 +214,12 @@ class ContinueReading(BaseModel):
     percent_complete: int  # 0-100
     has_in_progress: bool  # False if user has no in-progress work — client should show fresh content
     scroll_offset_px: int  # where within the slice body to resume (0 if first open)
+    # v3 §3.4: the user's last-picked reader mode for this work. The
+    # reader uses this to render Read/Study/Listen on first open
+    # without a flash. The mode switcher persists changes back via
+    # POST /progress/finish. Defaults to "read" if no progress row
+    # exists yet (new user, first slice).
+    reader_mode: str = "read"
 
 
 class WorkProgress(BaseModel):
@@ -209,6 +227,12 @@ class WorkProgress(BaseModel):
     work_title: str
     slice_title: str
     slice_order: int
+    # `current_slice_id` is the deep-link target. Optional because
+    # legacy rows that pre-date the column may have NULL, and a
+    # missing slice_id is a signal to fall back to `/book/{work_id}`
+    # (the book detail screen with the slice list) instead of going
+    # straight into the reader.
+    current_slice_id: int | None = None
     total_slices: int
     slices_completed: int
     percent_complete: int
@@ -252,6 +276,7 @@ class BookDetail(BaseModel):
     source: str | None = None
     education_level: str | None = None
     subject: str | None = None
+    class_level: str | None = None
     license_type: str | None = None
     attribution_text: str | None = None
 
@@ -1439,3 +1464,77 @@ class ContentFilterResponse(BaseModel):
     education_levels: list[str]
     subjects: list[str]
     sources: list[str]
+
+
+# ── v3 Study data (highlights + notes) ────────────────────────────
+# Per v3 §3.2 + Appendix A. Stored as a single JSON blob on the
+# User row (`users.study_data`). Per-user data, never queried
+# across users — see "fetch directly" rule in v3 §1.5.
+
+class HighlightEntry(BaseModel):
+    """A single highlight on a paragraph.
+
+    `paragraph_index` is the 0-indexed position of the paragraph
+    within the unit body (parser counts the `\\n\\n` separators).
+    `color` is one of the three brand-aligned highlight colors —
+    yellow / green / pink — matching the Study mode color picker.
+    `created_at` is the client-side stamp; the server trusts it
+    because the user owns the data and timestamps are display-only.
+    """
+    paragraph_index: int = Field(ge=0)
+    color: Literal["yellow", "green", "pink"]
+    created_at: str  # ISO 8601; client-generated
+
+
+class NoteEntry(BaseModel):
+    """A freeform note attached to a unit. Capped at 2000 chars
+    per v3 §3.2. Single note per unit — upserted on write."""
+    text: str = Field(max_length=2000)
+    created_at: str
+    updated_at: str
+
+
+class StudyDataBlob(BaseModel):
+    """The full study_data document. Shape (per v3 Appendix A):
+
+      {
+        "highlights": { "<unit_id>": [HighlightEntry, ...] },
+        "notes":      { "<unit_id>": NoteEntry }
+      }
+
+    Keys are unit_ids (not slice_ids, not work_ids) because units
+    are the read-prompt granularity — one unit = one Study-mode
+    session. The PATCH endpoints operate on a single key at a time
+    to keep the request shape small and the audit log readable.
+    """
+    highlights: dict[str, list[HighlightEntry]] = Field(default_factory=dict)
+    notes: dict[str, NoteEntry] = Field(default_factory=dict)
+
+
+class StudyDataPatchHighlights(BaseModel):
+    """Delta on one unit's highlights.
+
+    The client sends the full new list for the unit (replacement,
+    not append). The server replaces the array for that key. This
+    is simpler than add+remove lists and matches how the client's
+    local store models the data — one array per unit, replace on
+    change.
+    """
+    entries: list[HighlightEntry]
+
+
+class StudyDataPatchNote(BaseModel):
+    """Upsert one unit's note. Empty text deletes the note (so the
+    client can clear a note by sending `{"text": ""}`)."""
+    text: str = Field(max_length=2000)
+
+
+class FinishSliceBody(BaseModel):
+    """Optional body for POST /progress/finish.
+
+    `reader_mode` is the v3 §3.4 mode the user was in when they
+    finished the slice. Persists to `reading_progress.reader_mode`
+    so the next slice opens in the same mode. Allowed values
+    match the DB CHECK constraint from migration 016.
+    """
+    reader_mode: Literal["read", "study", "listen"] | None = None

@@ -31,6 +31,10 @@ export const Colors = {
  * PagePay design tokens. Used by the (auth) screens and any future screens
  * that adopt the brand. Reads both as "wallet/money" (mint) and "book/page"
  * (cream paper) — the two sides of PagePay's value prop.
+ *
+ * Three color schemes: light, dark, and sepia. Sepia is a warm, paper-
+ * toned theme used by long-form readers. The `useEffectiveScheme()`
+ * hook now resolves to one of three values.
  */
 export const PagePay = {
   light: {
@@ -58,6 +62,24 @@ export const PagePay = {
     signal: '#F87171',
     signalSoft: '#3B1F1F',
     error: '#F87171',
+  },
+  sepia: {
+    // Warm paper tone — easier on the eyes for long reading sessions
+    // than pure white. Inspired by Kindle's classic sepia + a slightly
+    // darker text than Kindle uses (we have less rendering finesse on
+    // mid-range Android panels). Pairs with a brand-tinted mint that's
+    // a touch warmer than the light/dark mints.
+    ink: '#3E2C1C',
+    inkMuted: '#7A6650',
+    paper: '#F5ECD7',
+    card: '#FAF1DD',
+    border: '#D9C9A8',
+    mint: '#7C5E2A',
+    mintSoft: '#E8D9B0',
+    mintText: '#FFF8E7',
+    signal: '#A04A1F',
+    signalSoft: '#F2DCC4',
+    error: '#A04A1F',
   },
 };
 

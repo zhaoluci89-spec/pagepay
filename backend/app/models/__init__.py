@@ -1,6 +1,7 @@
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy import (
     String, Integer, BigInteger, Boolean, Text, DateTime, Time, Enum, Float,
+    SmallInteger, JSON,
 )
 from datetime import datetime, time
 import enum
@@ -69,6 +70,21 @@ class User(Base):
     city: Mapped[str | None] = mapped_column(String(100), nullable=True)
     country: Mapped[str] = mapped_column(String(50), default="Nigeria")
     languages: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # ── v3 Study data blob ───────────────────────────────────────────
+    # Per-user highlights + notes, keyed by reading_unit_id. Stored as a
+    # single JSON blob (not a normalized table) per v3 §1.5 — per-user
+    # data that's never queried across users. The client batches writes
+    # and syncs every ~10s, which only makes sense if the storage is a
+    # single document. See books/design-plan-v3.md §3.2 and Appendix A
+    # for the shape (`{"highlights": {unit_id: [...]}, "notes":
+    # {unit_id: {...}}}`) and the rationale.
+    # Default is `{}` (empty object, not NULL) so client code that reads
+    # the field can index into it directly without a None check. The DB
+    # column is nullable for historical rows that pre-date the column.
+    study_data: Mapped[dict | None] = mapped_column(
+        JSON, nullable=True, default=dict, server_default="{}"
+    )
 
 
 class BillTransaction(Base):
@@ -163,6 +179,14 @@ class ContentCatalog(Base):
     # `subject` is the broad academic subject (physics, mathematics, …).
     # Multiple books can share a subject; this drives subject filter chips.
     subject: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    # `class_level` is the grade or year inside an education_level
+    # bucket — 'Grade 1' .. 'Grade 12' (primary + secondary), or
+    # 'Year 1' .. 'Year 4' (tertiary). NULL on creche (no grades),
+    # research, and casual reader content. The catalog uses this
+    # together with education_level for the secondary "By class"
+    # filter. See books/design-plan-v3.md §1.2 for the full mapping
+    # + future country/region scoping plan.
+    class_level: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
     # `license_type` is the content's license. Ingestion is the gatekeeper:
     # only CC BY 4.0 / CC BY-SA 4.0 / public_domain are allowed into the
     # catalog. Anything NC is rejected at the ingest boundary.
@@ -172,6 +196,18 @@ class ContentCatalog(Base):
     # time so the UI never has to reconstruct the license string from
     # separate fields.
     attribution_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # ── v3 reader sentinel contract version ──────────────────────────
+    # 0 = plain text (pre-v3 slices, no sentinels in body_text)
+    # 1 = v3 sentinels present ([[IMG:src|alt]], Caption: …,
+    #     [TABLE START]…[TABLE END], [[EQ:…]]) per v3 §2.4
+    # The reader checks this field before parsing. This lets us ship
+    # the sentinel renderer now and roll the ingest change separately
+    # without coordinating a client release. See migration
+    # 017_content_body_sentinels_version.
+    body_sentinels_version: Mapped[int] = mapped_column(
+        SmallInteger, nullable=False, default=0, server_default="0"
+    )
 
 
 class AdEvent(Base):
@@ -267,6 +303,20 @@ class ReadingProgress(Base):
     # columns stay NULL and the existing reader flow is unchanged.
     current_unit_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     current_unit_order: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # ── v3 3-mode reader switcher (Read/Study/Listen) ────────────────
+    # Persists the user's last-picked mode for this work so a student
+    # who defaults to Study on Physics keeps that preference. Per
+    # v3 §3.4. The mode switcher is keyed per-work (not global) so a
+    # physics book can stay in Study while a novel stays in Read.
+    # The CHECK constraint at the DB level is enforced by migration
+    # 016_user_study_data_and_reader_mode. Allowed values:
+    #   'read'   — clean prose, swipe between units
+    #   'study'  — highlights + notes + share-as-image
+    #   'listen' — audio narration (TTS, deferred to a following sprint)
+    reader_mode: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="read", server_default="read"
+    )
 
 
 class SliceBookmark(Base):

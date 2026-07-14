@@ -50,7 +50,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import ContentCatalog
-from app.services.content.slicing.topic_slicer import slice_openstax_chapter
+from app.services.content.slicing.topic_slicer import (
+    PageTopic,
+    _NON_PROSE_HEADINGS,
+    _strip_html_tags,
+    slice_openstax_pages,
+)
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -81,10 +86,32 @@ OPENSTAX_DEFAULT_LICENSE = "CC BY 4.0"
 # single-chapter fetch on a malformed URL.
 MAX_CHAPTER_BYTES = 2 * 1024 * 1024
 
-# Maximum body text size per parent row. Same as the gutendex ingest
-# (60 KB) so we don't blow the Postgres TEXT column on a malformed
-# chapter.
-MAX_BODY_BYTES = 60_000
+# Maximum body text size per parent row. OpenStax chapters are 50-200 KB
+# of clean text after HTML strip; we cap at 2 MB to bound memory while
+# still letting a full 20-chapter book fit comfortably. (The old 60 KB
+# cap silently truncated most books — slices past the cap never made
+# it into the topic slicer.)
+MAX_BODY_BYTES = 2 * 1024 * 1024
+
+# How many consecutive 404s we tolerate before declaring a book done.
+# OpenStax is consistent but a transient 503 shouldn't abort the whole
+# book. Three in a row is a strong signal we're past the last chapter.
+CONSECUTIVE_404_LIMIT = 3
+
+# Regex used by the section walker. OpenStax's prev/next nav bar
+# (a `<div data-analytics-region="prev-next">`) holds the "Next Page"
+# link to the next section. We pull the href from that link and follow
+# the chain until it lands on the chapter intro or the next chapter.
+# See `_walk_chapter_sections`.
+_NEXT_PAGE_HREF_RE = re.compile(
+    r'href=["\']([^"\']+)["\'][^>]*aria-label=["\']Next Page["\']',
+    re.IGNORECASE,
+)
+# A relative path inside a section page's prev/next bar like
+# "1-2-units-and-standards" or "2-introduction".
+_SECTION_SLUG_RE = re.compile(r'^([0-9]+-[a-z0-9-]+)$', re.IGNORECASE)
+# A chapter intro slug like "1-introduction" or "2-introduction".
+_INTRO_SLUG_RE = re.compile(r'^([0-9]+)-introduction$', re.IGNORECASE)
 
 # Curriculum: the books PagePay will ingest at the initial seed.
 # Each entry maps a PagePay-internal subject + education_level to an
@@ -205,27 +232,49 @@ CURRICULUM: list[BookEntry] = [
 # Per-chapter fetching
 # ════════════════════════════════════════════════════════════════════════
 
-async def _fetch_chapter_html(
-    client: httpx.AsyncClient, slug: str, chapter_num: int
+async def _fetch_chapter_intro(
+    client: httpx.AsyncClient, book_slug: str, chapter_num: int
 ) -> str | None:
-    """Fetch the full-page HTML for a single chapter.
+    """Fetch the chapter's "Introduction" page by chapter number.
 
     OpenStax's chapter URL pattern is:
         https://openstax.org/books/{slug}/pages/{chapter_num}-introduction
-    where the page slug varies per chapter (e.g. "1-introduction",
-    "2-vectors", "3-kinematics"). The pattern of "{num}-" is consistent
-    enough that the title can be filled in later by the topic slicer.
+    so chapter 1 is `1-introduction`, chapter 2 is `2-introduction`, etc.
 
-    For now we fetch the chapter's full content via OpenStax's
-    `/pages/{n}-...` URL with `?content_only=1` to get the bare HTML
-    body without the site chrome.
+    We use ?content_only to skip the site chrome (header, footer, nav)
+    that would otherwise be parsed as garbage by the topic slicer.
 
     Returns None on HTTP error or empty body.
     """
-    # The canonical chapter URL pattern. We use ?content_only to skip
-    # the site chrome (header, footer, nav) that would otherwise be
-    # parsed as garbage by the topic slicer.
-    url = f"{OPENSTAX_BOOK_BASE}/{slug}/pages/{chapter_num}-introduction"
+    url = f"{OPENSTAX_BOOK_BASE}/{book_slug}/pages/{chapter_num}-introduction"
+    return await _fetch_page_html(client, book_slug, url)
+
+
+async def _fetch_page_html(
+    client: httpx.AsyncClient,
+    book_slug: str,
+    url_or_slug: str,
+) -> str | None:
+    """Fetch a page by full URL or by page slug.
+
+    Accepts either:
+      - A complete URL like
+        "https://openstax.org/books/university-physics-volume-1/pages/1-1-the-scope-and-scale-of-physics"
+      - A page slug like "1-1-the-scope-and-scale-of-physics" (or
+        "1-introduction")
+
+    Used by the section walk where we already have the full slug
+    from the prev/next bar. Using a separate function (vs overloading
+    _fetch_chapter_intro with a "full URL" mode) keeps the contract
+    simple: the function takes what the caller already has and just
+    fetches it.
+
+    Returns None on HTTP error or empty body.
+    """
+    if url_or_slug.startswith("http://") or url_or_slug.startswith("https://"):
+        url = url_or_slug
+    else:
+        url = f"{OPENSTAX_BOOK_BASE}/{book_slug}/pages/{url_or_slug}"
     try:
         resp = await client.get(
             url,
@@ -236,7 +285,7 @@ async def _fetch_chapter_html(
         )
         resp.raise_for_status()
     except httpx.HTTPError as exc:
-        logger.warning("OpenStax fetch failed: %s page %s: %s", slug, chapter_num, exc)
+        logger.warning("OpenStax fetch failed: %s page %s: %s", book_slug, url, exc)
         return None
 
     raw = resp.content
@@ -247,41 +296,225 @@ async def _fetch_chapter_html(
     return raw.decode("utf-8", errors="replace")
 
 
-def _extract_chapter_body(html: str) -> str:
-    """Extract the chapter body from a full OpenStax page.
+def _balanced_div_extract(html: str, marker: str) -> str | None:
+    """Find `<div ... data-type="MARKER">` in html and return the
+    matching open+inner+close div. Tracks nested <div>...</div> so
+    we don't stop at the first </div>. Returns None if the open tag
+    isn't found or we run out of HTML before the close.
+    """
+    open_m = re.search(
+        rf'<div[^>]*data-type=["\']{re.escape(marker)}["\'][^>]*>',
+        html, re.IGNORECASE,
+    )
+    if not open_m:
+        return None
+    i = open_m.end()
+    depth = 1
+    while i < len(html):
+        next_open = re.search(r'<div\b', html[i:], re.IGNORECASE)
+        next_close = html.find('</div>', i)
+        if next_close < 0:
+            return None
+        if next_open and (i + next_open.start()) < next_close:
+            depth += 1
+            i = i + next_open.end()
+        else:
+            depth -= 1
+            if depth == 0:
+                end = next_close + len('</div>')
+                return html[open_m.start():end]
+            i = next_close + len('</div>')
+    return None
 
-    OpenStax's page response includes the chapter inside a
-    `<div data-type="chapter">...</div>` block. The surrounding HTML
-    is the site chrome (nav, footer, accessibility toolbar) which we
-    don't want the topic slicer to see — its regexes would treat every
+
+def _extract_chapter_body(html: str) -> str:
+    """Extract the content body from a full OpenStax page.
+
+    OpenStax's `?content_only=1` response wraps the content in either:
+      - `<div data-type="chapter">` (chapter intro pages), or
+      - `<div data-type="page">`    (section pages).
+
+    The surrounding HTML is the site chrome (nav, footer,
+    accessibility toolbar, analytics script tags) which we don't
+    want the topic slicer to see — its regexes would treat every
     nav link as a heading.
 
-    If we can't find the chapter div (e.g. the page has been
-    re-designed and the data-type attribute moved), we return the raw
-    HTML. The topic slicer will then find zero sections and the parent
-    won't be sliced — a safe failure mode.
+    We use a balanced-div walk to find the matching close, so we
+    don't grab analytics/JSON/config blobs that come after the
+    page div in the OpenStax response.
+
+    Returns the matched div (with its open tag) so the slicer sees
+    the same shape it expects. Returns the raw HTML if no wrapper
+    is found — the topic slicer will then find zero sections and
+    the parent won't be sliced, a safe failure mode.
     """
     if not html:
         return ""
-    # Try the OpenStax-specific attribute first.
-    m = re.search(
-        r'<div[^>]*data-type=["\']chapter["\'][^>]*>(.*?)(?=<div[^>]*data-type=["\'](?:composite-page|footnote|glossary)|</body)',
-        html,
-        re.IGNORECASE | re.DOTALL,
-    )
-    if m:
-        return m.group(0)
-    # Fallback: search for any data-type="chapter" block.
-    m = re.search(
-        r'(<div[^>]*data-type=["\']chapter["\'][^>]*>.*?</div>)',
-        html,
-        re.IGNORECASE | re.DOTALL,
-    )
-    if m:
-        return m.group(1)
-    # No wrapper found. Return the original HTML; the topic slicer
-    # will gracefully produce zero topics.
+    for marker in ("chapter", "page"):
+        match = _balanced_div_extract(html, marker)
+        if match:
+            return match
     return html
+
+
+# OpenStax section pages have a top-level <h1> with the section title
+# like "1.1 The Scope and Scale of Physics". We also accept the
+# data-type="document-title" variant for the chapter intro page.
+_PAGE_TITLE_RE = re.compile(
+    r'<h1[^>]*?(?:\s+data-type=["\']document-title["\'])?[^>]*>(.*?)</h1>',
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def _extract_page_title(html: str) -> str:
+    """Return the page's <h1> text (section number + title), stripped
+    of any nested HTML. Falls back to "" if no <h1> is present.
+
+    Examples:
+        "1.1 The Scope and Scale of Physics"
+        "Introduction"
+    """
+    if not html:
+        return ""
+    m = _PAGE_TITLE_RE.search(html)
+    if not m:
+        return ""
+    return re.sub(r"<[^>]+>", "", m.group(1)).strip()
+
+
+async def _next_section_html(
+    client: httpx.AsyncClient,
+    book_slug: str,
+    current_section_slug: str,
+) -> str | None:
+    """Fetch a section page (for both the "Next Page" walk AND the
+    body extraction) and return its HTML. Returns None on HTTP error
+    or empty body.
+
+    Why a single fetch serves both needs: the walk discovers the
+    "Next Page" link from the same page whose body we want to
+    extract later. Fetching once instead of twice halves the
+    network round-trips for the section walk — a 15-chapter book
+    has ~150 section pages, so this saves ~150 fetches and ~5
+    minutes of ingest time.
+
+    The body extraction (`_extract_chapter_body`) is called later
+    on the returned HTML; the walk just inspects the prev/next bar.
+    """
+    url = f"{OPENSTAX_BOOK_BASE}/{book_slug}/pages/{current_section_slug}"
+    return await _fetch_page_html(client, book_slug, url)
+
+
+def _next_page_href(html: str) -> str | None:
+    """Return the "Next Page" href from a page's prev/next nav bar,
+    or None if the bar is missing or the link is absent. Pure
+    string operation — used by the walk on HTML it already has.
+    """
+    if not html:
+        return None
+    m = _NEXT_PAGE_HREF_RE.search(html)
+    return m.group(1) if m else None
+
+
+async def _walk_chapter_sections(
+    client: httpx.AsyncClient,
+    book_slug: str,
+    chapter_num: int,
+    start_section_slug: str,
+) -> list[tuple[str, str]]:
+    """Walk a chapter's sections by following OpenStax's "Next Page"
+    links, returning (slug, html) pairs in order.
+
+    The walk starts at `start_section_slug` (the first section, e.g.
+    "1-1-the-scope-and-scale-of-physics") and follows the chain until
+    the "Next Page" link points to:
+      - the chapter's intro page (`{N}-introduction`), or
+      - the next chapter's intro page (`{N+1}-introduction`), or
+      - any non-`{N}-...` slug, or
+      - the same slug we just came from (loop guard).
+
+    Returns a list of (slug, html) pairs for each section visited,
+    including the start. The HTML is the same one the walk used to
+    discover the next link — the caller reuses it for body extraction
+    instead of re-fetching. This halves the network round-trips.
+
+    May be empty if the start section can't be loaded.
+
+    Why walk instead of parsing the chapter outline: OpenStax's
+    chapter intro page renders the section list as plain text
+    ("1.1 The Scope of Physics") with NO `<a href>` links. The only
+    way to discover section URLs is to follow the navigation chain
+    from one section to the next — the page is structurally designed
+    for that walk pattern.
+    """
+    visited: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    current = start_section_slug
+    chapter_prefix = f"{chapter_num}-"
+    # Upper bound guards against a malformed prev/next bar that
+    # loops. A 30-chapter book has at most ~7 sections per chapter
+    # in our CURRICULUM; 40 is a safe ceiling.
+    for _ in range(40):
+        if current in seen:
+            logger.warning("section walk looped at %s", current)
+            break
+        seen.add(current)
+        html = await _next_section_html(client, book_slug, current)
+        if html is None:
+            # Fetch failed — record the slug with empty HTML so the
+            # caller can log and skip. Don't break the walk; the next
+            # link may still be discoverable from the previous page.
+            visited.append((current, ""))
+            break
+        visited.append((current, html))
+        nxt = _next_page_href(html)
+        if nxt is None:
+            break
+        # Strip leading path if OpenStax ever serves a full URL
+        # in the next href (currently it doesn't, but be defensive).
+        nxt_slug = nxt.rsplit("/pages/", 1)[-1].strip()
+        if nxt_slug == current:
+            break
+        if not nxt_slug.startswith(chapter_prefix):
+            # Next is some other chapter or a non-section page.
+            # The walk is done.
+            break
+        current = nxt_slug
+    return visited
+
+
+def _find_first_section_slug(intro_html: str, chapter_num: int) -> str | None:
+    """Extract the first-section slug from a chapter intro page.
+
+    The chapter intro page's prev/next nav bar has "Previous Page"
+    pointing to whatever came before the chapter (usually the previous
+    chapter's last section or the preface) and "Next Page" pointing to
+    the chapter's first section (e.g. "1-1-the-scope-and-scale-of-
+    physics"). We pull the "Next Page" href and return it as the
+    walk's start slug.
+
+    Returns None if the nav bar is missing or the href is not a
+    section-shaped slug — caller treats that as a hard failure for
+    the chapter.
+    """
+    if not intro_html:
+        return None
+    m = _NEXT_PAGE_HREF_RE.search(intro_html)
+    if not m:
+        return None
+    href = m.group(1)
+    # Strip path prefix if OpenStax serves an absolute URL.
+    slug = href.rsplit("/pages/", 1)[-1].strip()
+    if not _SECTION_SLUG_RE.match(slug):
+        return None
+    # Must belong to this chapter.
+    if not slug.startswith(f"{chapter_num}-"):
+        return None
+    # The chapter intro page itself shouldn't be the "next" — that
+    # would mean we've looped or the page is malformed.
+    if _INTRO_SLUG_RE.match(slug):
+        return None
+    return slug
 
 
 def _title_from_slug(slug: str) -> str:
@@ -292,6 +525,27 @@ def _title_from_slug(slug: str) -> str:
     metadata) where available, so this is a fallback only.
     """
     return re.sub(r"\b\w", lambda m: m.group(0).upper(), slug.replace("-", " "))
+
+
+def _is_boilerplate_title(title: str) -> bool:
+    """Return True if a section page's title is end-of-chapter
+    boilerplate (key terms, problems, etc.) and not a readable
+    topic. We use the same allow/deny logic as the in-blob parser
+    so behavior is consistent.
+
+    Normalized comparison: lowercase, strip punctuation, collapse
+    whitespace. This matches "Key Terms", "KEY TERMS", "key terms"
+    and "Key Terms." to the same canonical key.
+    """
+    if not title:
+        return False
+    # Drop leading section number like "1.1 " before comparing —
+    # the title "1.1 Key Terms" is the same as "Key Terms".
+    no_num = re.sub(r"^\d+(?:\.\d+)*\s*\.?\s*", "", title).strip()
+    normalized = re.sub(r"[^a-z\s]", "", no_num.lower()).strip()
+    # Drop "section N" prefix that some OpenStax titles use.
+    normalized = re.sub(r"^section\s+", "", normalized).strip()
+    return normalized in _NON_PROSE_HEADINGS
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -377,49 +631,121 @@ async def import_openstax_books(
             db.add(parent)
             await db.flush()  # get parent.id for slice parent_work_id
 
-            # Ingest chapters one at a time. We accumulate body_text
-            # for the parent row and slice each chapter immediately
-            # so a slicing error on chapter 5 doesn't lose chapters
-            # 1-4.
-            chapter_bodies: list[tuple[int, str]] = []  # (order, html)
+            # Ingest chapters one at a time. For each chapter we
+            # fetch the intro page (one slice = the chapter
+            # "Introduction" topic) and walk the section pages
+            # (one slice each). Each slice is persisted as a
+            # child row in content_catalog, with reading units
+            # from split_into_units on the cleaned body.
+            #
+            # We do NOT concatenate everything into one HTML blob
+            # and try to parse out <section data-type="section">
+            # blocks — OpenStax's actual structure (as of 2026) is
+            # page-based, not section-block-based.
+            chapter_pages: list[list[PageTopic]] = []  # per chapter: list of pages
+            consecutive_404s = 0
             for n in range(book.chapter_start, chapter_end + 1):
-                html = await _fetch_chapter_html(client, book.slug, n)
-                if html is None:
-                    # Likely past the last chapter (HTTP 404). Stop.
-                    if n > book.chapter_start + 2:
+                intro_html = await _fetch_chapter_intro(client, book.slug, n)
+                if intro_html is None:
+                    consecutive_404s += 1
+                    if consecutive_404s >= CONSECUTIVE_404_LIMIT:
+                        logger.info(
+                            "OpenStax ingest: %d consecutive 404s at chapter %d, stopping",
+                            consecutive_404s, n,
+                        )
                         break
                     continue
-                body = _extract_chapter_body(html)
-                if body:
-                    chapter_bodies.append((n, body))
+                consecutive_404s = 0
+
+                pages: list[PageTopic] = []
+
+                # 1. The chapter intro page is the first slice of
+                #    each chapter. Its title is the chapter's name
+                #    (extracted from the page's <h1>).
+                intro_title = _extract_page_title(intro_html) or f"Chapter {n} Introduction"
+                intro_body = _strip_html_tags(_extract_chapter_body(intro_html))
+                if intro_body:
+                    pages.append(PageTopic(title=intro_title, body_text=intro_body))
+
+                # 2. Walk the section pages via OpenStax's prev/next
+                #    nav. The walk's first slug comes from the
+                #    intro page's "Next Page" link. The walk returns
+                #    (slug, html) pairs so we can reuse the HTML
+                #    for body extraction without a re-fetch.
+                first_section = _find_first_section_slug(intro_html, n)
+                if first_section is not None:
+                    section_pages = await _walk_chapter_sections(
+                        client, book.slug, n, first_section
+                    )
+                    for section_slug, section_html in section_pages:
+                        if not section_html:
+                            logger.warning(
+                                "OpenStax ingest: section %s fetch failed for chapter %d of %s",
+                                section_slug, n, book.slug,
+                            )
+                            continue
+                        section_title = (
+                            _extract_page_title(section_html) or section_slug
+                        )
+                        section_body = _strip_html_tags(_extract_chapter_body(section_html))
+                        if not section_body:
+                            continue
+                        # Skip the "Key Terms" / "Problems" / etc.
+                        # boilerplate pages — they're not readable
+                        # topics. We use the same normalized-title
+                        # check as the in-blob parser.
+                        if _is_boilerplate_title(section_title):
+                            continue
+                        pages.append(
+                            PageTopic(title=section_title, body_text=section_body)
+                        )
+
+                if pages:
+                    chapter_pages.append((n, pages))
 
             # Persist combined body_text. Cap at MAX_BODY_BYTES so a
             # full book doesn't blow the TEXT column.
-            combined = "\n\n".join(b for _, b in chapter_bodies)
+            combined_text_parts: list[str] = []
+            for n, pages in chapter_pages:
+                for p in pages:
+                    combined_text_parts.append(p.body_text)
+            combined = "\n\n".join(combined_text_parts)
             if len(combined) > MAX_BODY_BYTES:
                 combined = combined[:MAX_BODY_BYTES]
             parent.body_text = combined
-            summary["chapters_total"] += len(chapter_bodies)
+            summary["chapters_total"] += len(chapter_pages)
 
-            # Slice the parent. We slice from the combined body so the
-            # topic slicer sees all chapter sections in one pass. This
-            # is the path that exercises the full-stop rule end-to-end.
-            try:
-                n_slices = await slice_openstax_chapter(db, parent, combined)
-                if n_slices > 0:
-                    summary["books_imported"] += 1
-                    summary["slices_total"] += n_slices
-                else:
-                    # Parsing produced no topics. Drop the parent so
-                    # the catalog doesn't show a ghost book.
-                    await db.delete(parent)
-                    summary["books_skipped"] += 1
-                    logger.warning("OpenStax ingest produced 0 slices for %s", book.slug)
-            except Exception as exc:  # noqa: BLE001
-                logger.error("Slicing failed for %s: %s", book.slug, exc)
-                await db.rollback()
+            # Persist one slice per page. Each chapter's pages
+            # become child rows under the parent. The full-stop
+            # rule is enforced per page by split_into_units.
+            total_slices_for_book = 0
+            book_failed = False
+            for n, pages in chapter_pages:
+                try:
+                    n_slices = await slice_openstax_pages(db, parent, pages)
+                    total_slices_for_book += n_slices
+                except Exception as exc:  # noqa: BLE001
+                    logger.error(
+                        "Slicing failed for chapter %d of %s: %s",
+                        n, book.slug, exc,
+                    )
+                    await db.rollback()
+                    book_failed = True
+                    break
+            if book_failed:
                 summary["books_skipped"] += 1
                 continue
+            if total_slices_for_book > 0:
+                summary["books_imported"] += 1
+                summary["slices_total"] += total_slices_for_book
+            else:
+                # No usable pages from any chapter. Drop the parent
+                # so the catalog doesn't show a ghost book.
+                await db.delete(parent)
+                summary["books_skipped"] += 1
+                logger.warning(
+                    "OpenStax ingest produced 0 slices for %s", book.slug
+                )
 
             await db.commit()
 

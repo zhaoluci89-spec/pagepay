@@ -35,3 +35,6 @@ resend==2.4.0
 # could break client-side type generation. For now we accept the
 # pinned starlette 0.37.2 and revisit in the fastapi upgrade.
 # When you bump fastapi, also bump starlette in the same PR.
+
+# v3 §3.3 Listen mode — TTS audio generation
+edge-tts==6.1.18

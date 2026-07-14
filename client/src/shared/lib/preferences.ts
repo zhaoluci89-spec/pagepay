@@ -16,8 +16,13 @@
 import { create } from 'zustand';
 import { Platform } from 'react-native';
 
-export type ThemePref = 'system' | 'light' | 'dark';
+export type ThemePref = 'system' | 'light' | 'dark' | 'sepia';
 export type LanguagePref = 'en' | 'pcm' | 'yo' | 'ha' | 'ig';
+// v3 §3.4: per-work reader mode. The mode switcher in the reader
+// updates this; the choice is then re-sent to the server via
+// POST /progress/finish { reader_mode }. 'read' is the default for
+// new users.
+export type ReaderMode = 'read' | 'study' | 'listen';
 
 type PreferencesState = {
   theme: ThemePref;
@@ -25,20 +30,23 @@ type PreferencesState = {
   onboardingCompleted: boolean;
   hydrated: boolean;
   biometricEnabled: boolean;
+  readerMode: ReaderMode;
   setTheme: (t: ThemePref) => void;
   setLanguage: (l: LanguagePref) => void;
   setOnboardingCompleted: (v: boolean) => void;
   setBiometricEnabled: (v: boolean) => void;
+  setReaderMode: (m: ReaderMode) => void;
 };
 
 const DEFAULTS: Pick<
   PreferencesState,
-  'theme' | 'language' | 'onboardingCompleted' | 'biometricEnabled'
+  'theme' | 'language' | 'onboardingCompleted' | 'biometricEnabled' | 'readerMode'
 > = {
   theme: 'system',
   language: 'en',
   onboardingCompleted: false,
   biometricEnabled: false,
+  readerMode: 'read',
 };
 
 export const usePreferences = create<PreferencesState>((set) => ({
@@ -49,6 +57,7 @@ export const usePreferences = create<PreferencesState>((set) => ({
   setOnboardingCompleted: (onboardingCompleted) =>
     set({ onboardingCompleted }),
   setBiometricEnabled: (biometricEnabled) => set({ biometricEnabled }),
+  setReaderMode: (readerMode) => set({ readerMode }),
 }));
 
 /**
@@ -66,11 +75,17 @@ async function loadPreferences(): Promise<Partial<PreferencesState>> {
     const lang = await readPref('language');
     const onboarded = await readPref('onboarding_completed');
     const biometric = await readPref('biometric_enabled');
+    const readerModeRaw = await readPref('reader_mode');
     return {
       theme: isThemePref(raw) ? raw : DEFAULTS.theme,
       language: isLanguagePref(lang) ? lang : DEFAULTS.language,
       onboardingCompleted: onboarded === 'true',
       biometricEnabled: biometric === 'true',
+      // Defensive parse: an attacker who can write the secure
+      // store could set the mode to something invalid. We
+      // silently fall back to 'read' rather than crashing the
+      // reader on mount.
+      readerMode: isReaderMode(readerModeRaw) ? readerModeRaw : DEFAULTS.readerMode,
     };
   } catch {
     return {};
@@ -78,11 +93,15 @@ async function loadPreferences(): Promise<Partial<PreferencesState>> {
 }
 
 function isThemePref(v: string | null): v is ThemePref {
-  return v === 'system' || v === 'light' || v === 'dark';
+  return v === 'system' || v === 'light' || v === 'dark' || v === 'sepia';
 }
 
 function isLanguagePref(v: string | null): v is LanguagePref {
   return v === 'en' || v === 'pcm' || v === 'yo' || v === 'ha' || v === 'ig';
+}
+
+function isReaderMode(v: string | null): v is ReaderMode {
+  return v === 'read' || v === 'study' || v === 'listen';
 }
 
 /**
@@ -113,6 +132,16 @@ export async function persistBiometricEnabled(
   value: boolean,
 ): Promise<void> {
   await writePref('biometric_enabled', value ? 'true' : 'false');
+}
+
+/**
+ * Persist the active reader mode. Same fire-and-forget shape as the
+ * other helpers — failures are non-fatal because the in-memory store
+ * already reflects the new value, and a rehydrate on next launch
+ * will simply re-read the last good write.
+ */
+export async function persistReaderMode(mode: ReaderMode): Promise<void> {
+  await writePref('reader_mode', mode);
 }
 
 // ── Storage helpers ───────────────────────────────────────────────────

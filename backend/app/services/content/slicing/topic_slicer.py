@@ -144,6 +144,56 @@ _NON_PROSE_HEADINGS = {
 # section number and the title separately for nicer display.
 _SECTION_NUM_RE = re.compile(r"^(\d+(?:\.\d+)*)\s*\.?\s*(.*)$")
 
+# v3 preserved-element regexes. See _strip_html_tags for the marker
+# format. These run BEFORE the global tag-strip pass, so they
+# extract structure into stable text sentinels that the future
+# client-side reader can regex back out for native rendering.
+
+# <img src="..." alt="..."> (or self-closing). OpenStax emits
+# <img src="..." alt="..."/> consistently, but some images lack the
+# alt attribute. We accept both shapes with a single regex that
+# captures src as a required named group and alt as an optional
+# one — re.search returns None for alt when it's not present, which
+# the substitution handler treats as the empty string.
+_IMG_RE = re.compile(
+    r'<img\b[^>]*?src=["\'](?P<src>[^"\']+)["\'](?:[^>]*?alt=["\'](?P<alt>[^"\']*)["\'])?[^>]*?/?>',
+    re.IGNORECASE,
+)
+
+# <figcaption>...</figcaption>. Greedy on the inside (figcaption can
+# contain inline HTML we want to keep but the tag itself is a leaf).
+_FIGCAPTION_RE = re.compile(
+    r'<figcaption[^>]*>(.*?)</figcaption\s*>',
+    re.IGNORECASE | re.DOTALL,
+)
+
+# <table>...</table>. OpenStax tables can be nested (table-in-table
+# for layout), but the inner one gets matched recursively by the
+# outer substitution pass. We use non-greedy + DOTALL.
+_TABLE_RE = re.compile(
+    r'<table[^>]*>(.*?)</table\s*>',
+    re.IGNORECASE | re.DOTALL,
+)
+# A <tr>...</tr> inside a table row.
+_TR_RE = re.compile(
+    r'<tr[^>]*>(.*?)</tr\s*>',
+    re.IGNORECASE | re.DOTALL,
+)
+# <td> or <th> inside a row. We collapse the two into one pattern
+# because the reader doesn't need to distinguish them for the v1
+# text-table rendering.
+_CELL_RE = re.compile(
+    r'<t[dh][^>]*>(.*?)</t[dh]\s*>',
+    re.IGNORECASE | re.DOTALL,
+)
+
+# <div data-type="equation">...</div>. OpenStax wraps LaTeX/math
+# in this wrapper; we extract the inner verbatim for future KaTeX.
+_EQUATION_RE = re.compile(
+    r'<div[^>]*?data-type=["\']equation["\'][^>]*>(.*?)</div\s*>',
+    re.IGNORECASE | re.DOTALL,
+)
+
 
 @dataclass
 class TopicSection:
@@ -158,7 +208,36 @@ class TopicSection:
 # ════════════════════════════════════════════════════════════════════════
 
 def _strip_html_tags(html: str) -> str:
-    """Drop all HTML tags, keeping the visible text.
+    """Drop most HTML tags, keeping the visible text + a few structured
+    markers that the v3 reader will render.
+
+    v3 (per books/design-plan-v3.md §2) preserves four kinds of elements
+    in the cleaned body so the reader can later render them as the
+    diagram/equation/table layers come online:
+
+      - <img>             → [[IMG:src|alt]]  (alt is a hint, often
+                                              empty on OpenStax)
+      - <figcaption>      → Caption: <text>   (one line, in place)
+      - <table>           → [TABLE START] ... [TABLE END]  (inner
+                                              cells joined with
+                                              spaces, rows with
+                                              newlines; the reader
+                                              will replace this with
+                                              a proper table layout
+                                              in a later phase)
+      - <div data-type="equation"> → [[EQ:<inner-text-or-LaTeX>]]
+                                              (text content for now;
+                                              the reader can upgrade
+                                              to KaTeX rendering
+                                              when the client-side
+                                              renderer is added)
+
+    The four markers are stable strings (`[[IMG:...]]` etc.) so the
+    future client can regex them out and replace with the real
+    component without a re-ingest. We chose this over a richer
+    inline JSON because the slicer already does sentence-end
+    detection on the body — keeping the cleaned text as plain
+    prose-with-sentinels is the lowest-risk path.
 
     Paragraph breaks are converted to blank lines (\\n\\n) so the
     sentence-end finder can recognize sentence ends that span
@@ -168,8 +247,83 @@ def _strip_html_tags(html: str) -> str:
     """
     if not html:
         return ""
+
+    # ── Phase 1: extract the four preserved elements ────────────
+    # We walk the HTML in order and replace each preserved element
+    # with a single-line marker, leaving the surrounding prose
+    # untouched. The order of substitution matters: do <img> first
+    # (they're leaves), then <figcaption> (which only appears inside
+    # <figure>), then <table> (which may contain <img>s), then
+    # <div data-type="equation">.
+    #
+    # We use a single-pass scan rather than four .sub() calls so the
+    # markers land in document order — the reader can then render
+    # them inline as it walks the body.
+
+    # <img>: capture src + alt. OpenStax images use absolute https
+    # URLs; alt is often empty. We coerce empty alt to "" so the
+    # marker is consistent.
+    def _img_sub(m: re.Match) -> str:
+        src = m.group("src") or ""
+        alt = (m.group("alt") or "").strip()
+        # Strip query strings from src — OpenStax adds ?v=... for
+        # cache-busting that we don't need to surface.
+        src = src.split("?")[0]
+        return f"[[IMG:{src}|{alt}]]"
+
+    text = _IMG_RE.sub(_img_sub, html)
+
+    # <figcaption>: replace with "Caption: <text>" on its own line.
+    # We then drop the wrapper <figcaption> tag and any inner tags
+    # via the global strip step later.
+    def _figcaption_sub(m: re.Match) -> str:
+        inner = _HTML_TAG_RE.sub("", m.group(1))
+        inner = re.sub(r"\s+", " ", inner).strip()
+        if not inner:
+            return ""
+        return f"\nCaption: {inner}\n"
+
+    text = _FIGCAPTION_RE.sub(_figcaption_sub, text)
+
+    # <table>: replace the whole table with [TABLE START] ... rows
+    # joined with newlines ... [TABLE END]. Cells within a row are
+    # joined with " | " so the result is a readable text-table for
+    # v1, and the markers are stable enough that a future client
+    # parser can detect them and render a real table.
+    def _table_sub(m: re.Match) -> str:
+        inner = m.group(1)
+        rows: list[str] = []
+        for tr_m in _TR_RE.finditer(inner):
+            cells: list[str] = []
+            for cell_m in _CELL_RE.finditer(tr_m.group(1)):
+                cell_text = _HTML_TAG_RE.sub("", cell_m.group(1))
+                cell_text = re.sub(r"\s+", " ", cell_text).strip()
+                cells.append(cell_text)
+            if cells:
+                rows.append(" | ".join(cells))
+        if not rows:
+            return ""
+        return "\n[TABLE START]\n" + "\n".join(rows) + "\n[TABLE END]\n"
+
+    text = _TABLE_RE.sub(_table_sub, text)
+
+    # <div data-type="equation">: replace with [[EQ:<inner>]].
+    # The inner is whatever text was inside (often LaTeX-ish
+    # source); we keep it verbatim so a future KaTeX layer can
+    # parse it. We do NOT strip HTML inside the equation — some
+    # OpenStax equations include <math> wrappers that we want to
+    # preserve as-is for the renderer.
+    def _equation_sub(m: re.Match) -> str:
+        inner = m.group(1).strip()
+        if not inner:
+            return ""
+        return f"[[EQ:{inner}]]"
+
+    text = _EQUATION_RE.sub(_equation_sub, text)
+
+    # ── Phase 2: standard prose cleanup ─────────────────────────
     # Replace <p> boundaries with newlines so paragraphs become parseable.
-    text = _P_OPEN_RE.sub("\n", html)
+    text = _P_OPEN_RE.sub("\n", text)
     text = _P_CLOSE_RE.sub("\n\n", text)
     text = _BR_RE.sub("\n", text)
     # Drop any remaining tags (span, em, strong, sup, sub, math, etc.).
@@ -489,6 +643,166 @@ async def slice_openstax_chapter(
     # Demote the parent's per-row estimated minutes to the sum of
     # child estimated minutes. The catalog uses this for the "X min
     # total" badge on the parent card.
+    total_minutes = await db.execute(
+        select(ContentCatalog.estimated_read_minutes)
+        .where(ContentCatalog.parent_work_id == parent.id)
+    )
+    child_minutes = [m for (m,) in total_minutes.all() if m is not None]
+    if child_minutes:
+        await db.execute(
+            update(ContentCatalog)
+            .where(ContentCatalog.id == parent.id)
+            .values(
+                estimated_read_minutes=sum(child_minutes),
+                word_count=None,
+                char_count=None,
+                read_order=None,
+                total_slices=None,
+            )
+        )
+
+    await db.commit()
+    return total_slices
+
+
+# ════════════════════════════════════════════════════════════════════════
+# Page-based persistence: one OpenStax section page = one slice
+# ════════════════════════════════════════════════════════════════════════
+# OpenStax's HTML structure (as of 2026) renders each section ("1.1
+# The Scope and Scale of Physics", "1.2 Units and Standards", …) as
+# its own page at `/pages/{n}-{section-slug}`. The whole page is one
+# logical topic. The intro page is a separate "Introduction" page.
+#
+# This is different from the original assumption (one chapter page
+# with nested <section data-type="section"> blocks per topic). The
+# walk-based discovery in openstax.py gives us a list of page titles
+# + bodies; we persist one slice per page here, with reading units
+# from split_into_units on each page's body.
+#
+# This function does NOT depend on parse_openstax_chapter — it works
+# on already-cleaned text bodies.
+
+@dataclass
+class PageTopic:
+    """A pre-parsed OpenStax page, ready to be persisted as a slice.
+
+    title:    The <h1> of the page, e.g. "1.1 The Scope and Scale of
+              Physics" or "Introduction" for the chapter intro.
+    body_text: Cleaned prose from the page (no HTML). Will be split
+              into reading units by split_into_units.
+    """
+    title: str
+    body_text: str
+
+
+async def slice_openstax_pages(
+    db: AsyncSession,
+    parent: ContentCatalog,
+    pages: list[PageTopic],
+) -> int:
+    """Persist N page-based slices + reading units under `parent`.
+
+    Each page becomes one child row in content_catalog. The page's
+    body is split into reading units by split_into_units (with the
+    full-stop rule). Returns the number of slices persisted.
+
+    Pages with no body or no sentence ends are dropped silently —
+    they're usually empty placeholder pages, and dropping them is
+    safer than shipping a malformed slice.
+
+    Idempotency: if the parent already has children, returns the
+    existing count without re-persisting.
+    """
+    if not pages:
+        logger.warning(
+            "slice_openstax_pages: no pages to persist for parent %s (id=%s)",
+            parent.title, getattr(parent, "id", None),
+        )
+        return 0
+
+    # Idempotency check.
+    existing = await db.execute(
+        select(ContentCatalog.id).where(ContentCatalog.parent_work_id == parent.id).limit(1)
+    )
+    if existing.scalar_one_or_none() is not None:
+        count_row = await db.execute(
+            select(ContentCatalog.id).where(ContentCatalog.parent_work_id == parent.id)
+        )
+        return len(count_row.scalars().all())
+
+    total_slices = 0
+    for order, page in enumerate(pages, start=1):
+        if not page.body_text.strip():
+            logger.warning(
+                "slice_openstax_pages: dropped empty page '%s' (order=%d)",
+                page.title, order,
+            )
+            continue
+        units = split_into_units(page.body_text)
+        if not units:
+            logger.warning(
+                "slice_openstax_pages: dropped page '%s' (no sentence ends)",
+                page.title,
+            )
+            continue
+        total_units = len(units)
+        combined_body = "\n\n".join(units)
+        word_count = len(combined_body.split())
+        char_count = len(combined_body)
+        # Prefix with the parent title so the user can tell which
+        # chapter this slice belongs to.
+        base_title = parent.title.split(";")[0].strip()
+        slice_title = f"{base_title} — {page.title}"
+        child = ContentCatalog(
+            title=slice_title,
+            content_type=parent.content_type,
+            category=parent.category,
+            source_url=None,
+            body_text=combined_body,
+            author=parent.author,
+            estimated_read_minutes=max(1, total_units * 2),  # ~2 min per unit
+            parent_work_id=parent.id,
+            read_order=order,
+            total_slices=None,  # filled after we know the total
+            word_count=word_count,
+            char_count=char_count,
+            # Inherit the parent's education + license fields.
+            source=parent.source,
+            education_level=parent.education_level,
+            subject=parent.subject,
+            license_type=parent.license_type,
+            attribution_text=parent.attribution_text,
+        )
+        db.add(child)
+        await db.flush()  # populate child.id for FK on reading_units
+        for unit_order, unit_body in enumerate(units, start=1):
+            db.add(
+                ReadingUnit(
+                    slice_id=child.id,
+                    unit_order=unit_order,
+                    total_units=total_units,
+                    body_text=unit_body,
+                    char_count=len(unit_body),
+                    word_count=len(unit_body.split()),
+                    estimated_read_minutes=2,
+                )
+            )
+        total_slices += 1
+
+    if total_slices == 0:
+        # Every page was dropped. Don't persist a parent with no
+        # children — it'd be a "ghost" book in the catalog.
+        return 0
+
+    # Set total_slices on every child to the actual count.
+    await db.execute(
+        update(ContentCatalog)
+        .where(ContentCatalog.parent_work_id == parent.id)
+        .where(ContentCatalog.read_order.is_not(None))
+        .values(total_slices=total_slices)
+    )
+    # Demote the parent's per-row estimated minutes to the sum of
+    # child estimated minutes.
     total_minutes = await db.execute(
         select(ContentCatalog.estimated_read_minutes)
         .where(ContentCatalog.parent_work_id == parent.id)

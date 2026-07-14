@@ -128,6 +128,7 @@ export default function HomeScreen() {
         work_title: string;
         slice_title: string;
         slice_order: number;
+        current_slice_id: number | null;
         total_slices: number;
         slices_completed: number;
         percent_complete: number;
@@ -140,17 +141,19 @@ export default function HomeScreen() {
 
   // Derive the resume payloads. Each card navigates to its work's
   // current slice — `/reader/{sliceId}` — so the user lands in the
-  // exact slice they left off.
+  // exact slice they left off. Per v3 §4.1, deep-linking is the
+  // point: no more "open book, find slice, scroll to where I was."
+  // If the backend didn't return a current_slice_id (legacy row,
+  // missing pointer, or first-time visit), we fall back to
+  // `/book/{workId}` so the user can still pick a slice manually
+  // — better than a dead link.
   const resumes: ResumePayload[] = useMemo(() => {
     const list = inProgressQuery.data ?? [];
     return list.map((w) => {
       const remainingSlices = Math.max(1, w.total_slices - w.slices_completed);
-      // The current slice id isn't in /progress — it's in /progress/continue
-      // for one row at a time. As a fallback, point the user at the book
-      // detail screen so they can pick up via the slice list.
       return {
         workId: w.work_id,
-        sliceId: w.slice_order, // unused; we navigate to book detail instead
+        sliceId: w.current_slice_id ?? 0,
         title: w.work_title,
         author: null,
         progress: w.percent_complete / 100,
@@ -266,11 +269,18 @@ export default function HomeScreen() {
                   author={r.author}
                   progress={r.progress}
                   minutesLeft={r.minutesLeft}
-                  // Tap goes to the book detail screen so the user
-                  // sees their position in the slice list and chooses
-                  // which slice to continue. Reading stays per-work,
-                  // not per-app.
-                  onPress={() => router.push(`/book/${r.workId}` as never)}
+                  // Tap deep-links to the exact slice the user was on.
+                  // v3 §4.1: "Continue reading" should open directly to
+                  // the user's last-read unit, not the book detail. If
+                  // the backend didn't return a slice id (legacy row),
+                  // fall back to the book detail screen.
+                  onPress={() =>
+                    router.push(
+                      r.sliceId
+                        ? (`/reader/${r.sliceId}` as never)
+                        : (`/book/${r.workId}` as never),
+                    )
+                  }
                 />
               ))}
             </ScrollView>

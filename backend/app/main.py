@@ -15,6 +15,9 @@ from app.database import AsyncSessionLocal, engine
 from app.limiter import limiter
 from app.models import Base
 from app.routers import auth, content, sessions, health, wallet, progress, ads, study, legal, bills, notifications, pin
+from app.routers.images import router as images_router
+from app.routers.audio import router as audio_router
+from app.routers.study_data import router as study_data_router
 from app.routers.ai import router as ai_router
 from app.routers.referral import router as referral_router
 from app.routers.community import router as community_router
@@ -71,7 +74,19 @@ async def _migrate_in_background():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global processor_task
-    
+
+    # Ensure the v3 image proxy cache dir exists on startup. The
+    # proxy router creates it lazily on first request as a
+    # belt-and-suspenders measure, but having the dir ready at
+    # boot lets us fail fast on a misconfigured volume mount
+    # (e.g. Render disk not attached) instead of returning 502
+    # to the first reader session.
+    try:
+        from pathlib import Path
+        Path(settings.image_cache_dir).mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        logger.warning("Could not create image cache dir %s: %s", settings.image_cache_dir, exc)
+
     # Only create tables, don't seed yet
     try:
         async with engine.begin() as conn:
@@ -212,6 +227,9 @@ API_PREFIX = "/api/v1"
 
 app.include_router(auth.router, prefix=API_PREFIX)
 app.include_router(content.router, prefix=API_PREFIX)
+app.include_router(images_router, prefix=API_PREFIX)
+app.include_router(audio_router, prefix=API_PREFIX)
+app.include_router(study_data_router, prefix=API_PREFIX)
 app.include_router(sessions.router, prefix=API_PREFIX)
 app.include_router(wallet.router, prefix=API_PREFIX)
 app.include_router(health.router, prefix=API_PREFIX)

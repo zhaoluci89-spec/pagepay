@@ -72,6 +72,7 @@ const themeOptions: { value: ThemePref; label: string }[] = [
   { value: 'system', label: 'System' },
   { value: 'light', label: 'Light' },
   { value: 'dark', label: 'Dark' },
+  { value: 'sepia', label: 'Sepia' },
 ];
 
 export default function ProfileScreen() {
@@ -1101,7 +1102,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   segmentLabel: {
-    fontSize: 13,
+    fontSize: 12,
   },
   // Language grid
   langGrid: {
