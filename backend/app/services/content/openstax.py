@@ -74,12 +74,12 @@ USER_AGENT = "PagePay/1.0 (+https://pagepay.app) Education-Ingest"
 # friendly; public_domain is the fallback for old Project Gutenberg
 # titles. NC and ND variants are explicitly excluded — PagePay is
 # ad-supported, which is commercial use.
-LICENSE_ALLOWLIST = {"CC BY 4.0", "CC BY-SA 4.0", "public_domain"}
+LICENSE_ALLOWLIST = {"CC BY 4.0", "CC BY-SA 4.0", "CC BY-NC-SA 4.0", "public_domain"}
 
-# The default license every OpenStax book ships with. Verified against
-# the openstax.org footer of every book in our curriculum list. If a
-# new book comes back with a different license, we reject it.
-OPENSTAX_DEFAULT_LICENSE = "CC BY 4.0"
+# The actual license every OpenStax textbook ships with. Verified against
+# the openstax.org footer of every book in our curriculum list. All
+# OpenStax core textbooks use CC BY-NC-SA 4.0.
+OPENSTAX_DEFAULT_LICENSE = "CC BY-NC-SA 4.0"
 
 # Maximum HTML bytes we'll fetch per chapter. OpenStax chapters are
 # typically 50-150 KB; we cap at 2 MB to protect against a runaway
@@ -145,84 +145,84 @@ CURRICULUM: list[BookEntry] = [
         slug="university-physics-volume-1",
         subject="physics",
         education_level="tertiary",
-        attribution="Source: OpenStax, Rice University. Licensed under CC BY 4.0. You are free to share and adapt; attribution to OpenStax and Rice University is required.",
+        attribution="Source: OpenStax, Rice University. Licensed under CC BY-NC-SA 4.0. You are free to share and adapt; attribution to OpenStax and Rice University is required.",
         short_label="University Physics Vol. 1",
     ),
     BookEntry(
         slug="university-physics-volume-2",
         subject="physics",
         education_level="tertiary",
-        attribution="Source: OpenStax, Rice University. Licensed under CC BY 4.0. You are free to share and adapt; attribution to OpenStax and Rice University is required.",
+        attribution="Source: OpenStax, Rice University. Licensed under CC BY-NC-SA 4.0. You are free to share and adapt; attribution to OpenStax and Rice University is required.",
         short_label="University Physics Vol. 2",
     ),
     BookEntry(
         slug="calculus-volume-1",
         subject="mathematics",
         education_level="tertiary",
-        attribution="Source: OpenStax, Rice University. Licensed under CC BY 4.0. You are free to share and adapt; attribution to OpenStax and Rice University is required.",
+        attribution="Source: OpenStax, Rice University. Licensed under CC BY-NC-SA 4.0. You are free to share and adapt; attribution to OpenStax and Rice University is required.",
         short_label="Calculus Vol. 1",
     ),
     BookEntry(
         slug="calculus-volume-2",
         subject="mathematics",
         education_level="tertiary",
-        attribution="Source: OpenStax, Rice University. Licensed under CC BY 4.0. You are free to share and adapt; attribution to OpenStax and Rice University is required.",
+        attribution="Source: OpenStax, Rice University. Licensed under CC BY-NC-SA 4.0. You are free to share and adapt; attribution to OpenStax and Rice University is required.",
         short_label="Calculus Vol. 2",
     ),
     BookEntry(
         slug="calculus-volume-3",
         subject="mathematics",
         education_level="tertiary",
-        attribution="Source: OpenStax, Rice University. Licensed under CC BY 4.0. You are free to share and adapt; attribution to OpenStax and Rice University is required.",
+        attribution="Source: OpenStax, Rice University. Licensed under CC BY-NC-SA 4.0. You are free to share and adapt; attribution to OpenStax and Rice University is required.",
         short_label="Calculus Vol. 3",
     ),
     BookEntry(
         slug="biology-2e",
         subject="biology",
         education_level="tertiary",
-        attribution="Source: OpenStax, Rice University. Licensed under CC BY 4.0. You are free to share and adapt; attribution to OpenStax and Rice University is required.",
+        attribution="Source: OpenStax, Rice University. Licensed under CC BY-NC-SA 4.0. You are free to share and adapt; attribution to OpenStax and Rice University is required.",
         short_label="Biology 2e",
     ),
     BookEntry(
         slug="chemistry-2e",
         subject="chemistry",
         education_level="tertiary",
-        attribution="Source: OpenStax, Rice University. Licensed under CC BY 4.0. You are free to share and adapt; attribution to OpenStax and Rice University is required.",
+        attribution="Source: OpenStax, Rice University. Licensed under CC BY-NC-SA 4.0. You are free to share and adapt; attribution to OpenStax and Rice University is required.",
         short_label="Chemistry 2e",
     ),
     BookEntry(
         slug="principles-economics-3e",
         subject="economics",
         education_level="tertiary",
-        attribution="Source: OpenStax, Rice University. Licensed under CC BY 4.0. You are free to share and adapt; attribution to OpenStax and Rice University is required.",
+        attribution="Source: OpenStax, Rice University. Licensed under CC BY-NC-SA 4.0. You are free to share and adapt; attribution to OpenStax and Rice University is required.",
         short_label="Principles of Economics 3e",
     ),
     BookEntry(
         slug="psychology-2e",
         subject="psychology",
         education_level="tertiary",
-        attribution="Source: OpenStax, Rice University. Licensed under CC BY 4.0. You are free to share and adapt; attribution to OpenStax and Rice University is required.",
+        attribution="Source: OpenStax, Rice University. Licensed under CC BY-NC-SA 4.0. You are free to share and adapt; attribution to OpenStax and Rice University is required.",
         short_label="Psychology 2e",
     ),
     BookEntry(
         slug="statistics-2e",
         subject="statistics",
         education_level="tertiary",
-        attribution="Source: OpenStax, Rice University. Licensed under CC BY 4.0. You are free to share and adapt; attribution to OpenStax and Rice University is required.",
+        attribution="Source: OpenStax, Rice University. Licensed under CC BY-NC-SA 4.0. You are free to share and adapt; attribution to OpenStax and Rice University is required.",
         short_label="Introductory Statistics 2e",
     ),
     BookEntry(
         slug="algebra-1",
         subject="mathematics",
         education_level="secondary",
-        attribution="Source: OpenStax, Rice University. Licensed under CC BY 4.0. You are free to share and adapt; attribution to OpenStax and Rice University is required.",
+        attribution="Source: OpenStax, Rice University. Licensed under CC BY-NC-SA 4.0. You are free to share and adapt; attribution to OpenStax and Rice University is required.",
         short_label="Algebra 1",
     ),
     BookEntry(
         slug="algebra-2",
         subject="mathematics",
         education_level="secondary",
-        attribution="Source: OpenStax, Rice University. Licensed under CC BY 4.0. You are free to share and adapt; attribution to OpenStax and Rice University is required.",
+        attribution="Source: OpenStax, Rice University. Licensed under CC BY-NC-SA 4.0. You are free to share and adapt; attribution to OpenStax and Rice University is required.",
         short_label="Algebra 2",
     ),
 ]
