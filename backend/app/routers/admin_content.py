@@ -16,6 +16,7 @@ from app.models import ContentCatalog, AdminUser, AdminAuditLog
 from app.services.admin_auth import require_permission
 from app.services.content.gutendex import import_gutendex
 from app.services.content.slicing import force_reslice_all
+from app.services.content.openstax import import_openstax_books, CURRICULUM
 
 logger = logging.getLogger("uvicorn.error")
 router = APIRouter(prefix="/content", tags=["admin-content"])
@@ -94,6 +95,57 @@ async def list_content(
     ]
     
     return {"items": items, "total": int(total), "page": page, "limit": limit}
+
+
+@router.post("/import")
+async def admin_import_content(
+    request: Request,
+    source: str = Query(..., description="Content source: 'gutenberg' or 'openstax'"),
+    current_admin: AdminUser = Depends(require_permission("content.import")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Import content from a specific source.
+
+    Supported sources:
+      - gutenberg: import a fresh page of books from Gutendex
+      - openstax: import the OpenStax STEM curriculum
+
+    Returns counts the admin UI can show in a toast.
+    """
+    source = source.strip().lower()
+    if source == "gutenberg":
+        imported = await import_gutendex(db, limit=20, start_page=1)
+        reslice_summary = await force_reslice_all(db)
+        db.add(
+            _log_admin_action(
+                current_admin.id,
+                current_admin.email,
+                "import_gutenberg",
+                "content",
+                None,
+                {"imported": imported, "resliced": str(reslice_summary)},
+                request.client.host,
+            )
+        )
+        await db.commit()
+        return {"imported": imported, "resliced": reslice_summary}
+    elif source == "openstax":
+        summary = await import_openstax_books(db)
+        db.add(
+            _log_admin_action(
+                current_admin.id,
+                current_admin.email,
+                "import_openstax",
+                "content",
+                None,
+                {"books_imported": summary.get("books_imported", 0), "slices_total": summary.get("slices_total", 0)},
+                request.client.host,
+            )
+        )
+        await db.commit()
+        return {"imported": summary.get("books_imported", 0), "slices_total": summary.get("slices_total", 0)}
+    else:
+        raise HTTPException(status_code=400, detail=f"Unsupported source: {source}. Use 'gutenberg' or 'openstax'.")
 
 
 @router.post("/refresh")

@@ -513,7 +513,12 @@
     "empty_finished": "You've finished everything we have. Pull more?",
     "pull_more": "Pull more books",
     "refresh_catalog": "Refresh catalog",
-    "refresh_error": "Couldn't reach the catalog. Tap again."
+    "refresh_error": "Couldn't reach the catalog. Tap again.",
+    "keep_reading": "Keep reading",
+    "search_placeholder": "Search books, subjects...",
+    "search_clear": "Clear search",
+    "class_picker_label": "Class Level",
+    "class_all": "All Classes"
   },
   "community": {
     "title": "Community Notes",

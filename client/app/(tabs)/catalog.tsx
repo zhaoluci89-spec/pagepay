@@ -31,12 +31,12 @@ import { useEffectiveScheme } from '@/src/shared/hooks/use-effective-scheme';
 // a label (English, the i18n key is for future localization) and a
 // short label for the expanded grid card. The order is from primary
 // education up to research — a 6-cell row that fits the spec.
-const LEVEL_OPTIONS: ReadonlyArray<{ value: string; label: string; emoji: string }> = [
-  { value: 'creche', label: 'Creche', emoji: '🧸' },
-  { value: 'primary', label: 'Primary', emoji: '📐' },
-  { value: 'secondary', label: 'Secondary', emoji: '🔬' },
-  { value: 'tertiary', label: 'University', emoji: '🎓' },
-  { value: 'research', label: 'Research', emoji: '📄' },
+const LEVEL_OPTIONS: ReadonlyArray<{ value: string; label: string; icon: keyof typeof Ionicons.glyphMap }> = [
+  { value: 'creche', label: 'Creche', icon: 'happy-outline' },
+  { value: 'primary', label: 'Primary', icon: 'pencil-outline' },
+  { value: 'secondary', label: 'Secondary', icon: 'flask-outline' },
+  { value: 'tertiary', label: 'University', icon: 'school-outline' },
+  { value: 'research', label: 'Research', icon: 'document-text-outline' },
 ];
 
 // Class-level vocabulary per v3 §1.2. International Grade 1-12 + Year 1-4.
@@ -274,50 +274,6 @@ export default function CatalogScreen() {
         </Text>
       </View>
 
-      {/* "Keep Reading" carousel. Only shown when the catalog is
-          unfiltered (per the v3 §4.1 rule that the home tab is the
-          primary surface for resume and the catalog adds it as a
-          shortcut when the user lands with no filters applied). The
-          carousel is mounted only when there's actually progress to
-          show, so the empty case is just "no row here". */}
-      {catalogUnfiltered && resumes.length > 0 ? (
-        <View style={styles.resumeRow}>
-          <Text
-            style={[
-              styles.resumeTitle,
-              { color: tokens.ink, fontFamily: 'SpaceGrotesk_700Bold' },
-            ]}
-          >
-            {t('catalog.keep_reading')}
-          </Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ gap: 12, paddingRight: 16 }}
-            decelerationRate="fast"
-            snapToInterval={272}
-            snapToAlignment="start"
-          >
-            {resumes.map((r) => (
-              <ResumeCard
-                key={r.workId}
-                title={r.title}
-                author={r.author}
-                progress={r.progress}
-                minutesLeft={r.minutesLeft}
-                onPress={() =>
-                  router.push(
-                    r.sliceId
-                      ? (`/reader/${r.sliceId}` as never)
-                      : (`/book/${r.workId}` as never),
-                  )
-                }
-              />
-            ))}
-          </ScrollView>
-        </View>
-      ) : null}
-
       {/* Search bar (v3 §4.3). Server-side filtered on
           (education_level, class_level, subject, search). Debounced
           300ms in the parent state. Empty + blur = no filter. */}
@@ -436,7 +392,12 @@ export default function CatalogScreen() {
                 accessibilityState={{ selected }}
                 accessibilityLabel={`Filter by ${opt.label}`}
               >
-                <Text style={styles.levelEmoji}>{opt.emoji}</Text>
+                <Ionicons 
+                  name={opt.icon} 
+                  size={24} 
+                  color={selected ? tokens.mint : tokens.inkMuted} 
+                  style={styles.levelIcon}
+                />
                 <Text style={[
                   styles.levelLabel,
                   { color: selected ? tokens.mint : tokens.ink },
@@ -512,6 +473,50 @@ export default function CatalogScreen() {
           />
         }
       >
+        {/* "Keep Reading" carousel. Only shown when the catalog is
+            unfiltered (per the v3 §4.1 rule that the home tab is the
+            primary surface for resume and the catalog adds it as a
+            shortcut when the user lands with no filters applied). The
+            carousel is mounted only when there's actually progress to
+            show, so the empty case is just "no row here". */}
+        {catalogUnfiltered && resumes.length > 0 ? (
+          <View style={styles.resumeRow}>
+            <Text
+              style={[
+                styles.resumeTitle,
+                { color: tokens.ink, fontFamily: 'SpaceGrotesk_700Bold' },
+              ]}
+            >
+              {t('catalog.keep_reading')}
+            </Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ gap: 12, paddingRight: 16 }}
+              decelerationRate="fast"
+              snapToInterval={272}
+              snapToAlignment="start"
+            >
+              {resumes.map((r) => (
+                <ResumeCard
+                  key={r.workId}
+                  title={r.title}
+                  author={r.author}
+                  progress={r.progress}
+                  minutesLeft={r.minutesLeft}
+                  onPress={() =>
+                    router.push(
+                      r.sliceId
+                        ? (`/reader/${r.sliceId}` as never)
+                        : (`/book/${r.workId}` as never),
+                    )
+                  }
+                />
+              ))}
+            </ScrollView>
+          </View>
+        ) : null}
+
         {isInitialLoad ? (
           <View style={styles.list}>
             {Array.from({ length: 3 }).map((_, i) => (
@@ -650,8 +655,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     alignItems: 'center',
   },
-  levelEmoji: {
-    fontSize: 20,
+  levelIcon: {
     marginBottom: 4,
   },
   levelLabel: {
@@ -671,9 +675,8 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   resumeRow: {
-    paddingTop: 8,
-    paddingBottom: 4,
-    paddingLeft: 16,
+    paddingTop: 4,
+    paddingBottom: 12,
     gap: 6,
   },
   resumeTitle: {
@@ -713,7 +716,7 @@ const styles = StyleSheet.create({
   },
   scroll: {
     paddingHorizontal: 16,
-    paddingTop: 12,
+    paddingTop: 4,
     gap: 12,
   },
   list: {

@@ -477,7 +477,12 @@
     "empty_finished": "I mechara ihe niile anyị nwere. Dọta ndị ọzọ?",
     "pull_more": "Dọta akwụkwọ ndị ọzọ",
     "refresh_catalog": "Mee katalọgụ ọhụrụ",
-    "refresh_error": "Enweghị ike iru katalọgụ. Pịa ọzọ."
+    "refresh_error": "Enweghị ike iru katalọgụ. Pịa ọzọ.",
+    "keep_reading": "Gaa n'ihu ịgụ",
+    "search_placeholder": "Chọọ akwụkwọ, isiokwu...",
+    "search_clear": "Kpochapụ ọchụchọ",
+    "class_picker_label": "Ọkwa Klaasị",
+    "class_all": "Klaasị Niile"
   },
   "community": {
     "title": "Ndetu Obodo",

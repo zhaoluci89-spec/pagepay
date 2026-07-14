@@ -477,7 +477,12 @@
     "empty_finished": "You don finish everything we get. Pull more?",
     "pull_more": "Pull more books",
     "refresh_catalog": "Refresh catalog",
-    "refresh_error": "We no fit reach the catalog. Tap again."
+    "refresh_error": "We no fit reach the catalog. Tap again.",
+    "keep_reading": "Continue reading",
+    "search_placeholder": "Search books, subjects...",
+    "search_clear": "Clear search",
+    "class_picker_label": "Class Level",
+    "class_all": "All Classes"
   },
   "community": {
     "title": "Community Notes",

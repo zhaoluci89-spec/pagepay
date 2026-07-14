@@ -477,7 +477,12 @@
     "empty_finished": "Kun kammala duk abin da muke da shi. Jawo ƙarin?",
     "pull_more": "Jawo ƙarin littattafai",
     "refresh_catalog": "Sabunta catalog",
-    "refresh_error": "Ba za mu iya kaiwa ga catalog ba. Danna sake."
+    "refresh_error": "Ba za mu iya kaiwa ga catalog ba. Danna sake.",
+    "keep_reading": "Ci gaba da karantawa",
+    "search_placeholder": "Nemo littattafai, batutuwa...",
+    "search_clear": "Share nema",
+    "class_picker_label": "Matakin Aji",
+    "class_all": "Dukan Azuzuwan"
   },
   "community": {
     "title": "Bayanin Al'umma",

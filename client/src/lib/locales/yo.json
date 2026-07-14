@@ -477,7 +477,12 @@
     "empty_finished": "O ti pari gbogbo ohun ti a ni. Fa diẹ sii?",
     "pull_more": "Fa awọn iwe diẹ sii",
     "refresh_catalog": "Tun katalogi ṣe",
-    "refresh_error": "Ko le de katalogi naa. Tẹ lẹẹkansi."
+    "refresh_error": "Ko le de katalogi naa. Tẹ lẹẹkansi.",
+    "keep_reading": "Tẹsiwaju kika",
+    "search_placeholder": "Wa awọn iwe, awọn koko-ọrọ...",
+    "search_clear": "Pa wiwa",
+    "class_picker_label": "Ipele Kilasi",
+    "class_all": "Gbogbo Awọn Kilasi"
   },
   "community": {
     "title": "Awọn Akọsilẹ Agbegbe",

@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { adminApi } from '@/lib/api';
 import type { ContentListResponse } from '@/lib/types';
-import { Trash2, RefreshCw } from 'lucide-react';
+import { Trash2, RefreshCw, BookOpen } from 'lucide-react';
 import React, { useState } from 'react';
 import { Card, Badge, Button, Pagination, ShimmerLoader, Container, Tooltip, ConfirmModal } from '@/shared/components';
 import { TopHeader } from '@/shared/components/TopHeader';
@@ -58,6 +58,22 @@ export function ContentPage() {
     },
   });
 
+  const openstaxMutation = useMutation({
+    mutationFn: async () => {
+      const { data } = await adminApi.post('/admin/content/import?source=openstax');
+      return data as { imported: number; slices_total: number };
+    },
+    onSuccess: (result) => {
+      toast.success(`OpenStax import complete`, {
+        description: `${result.imported} books, ${result.slices_total} slices`,
+      });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'content'] });
+    },
+    onError: () => {
+      toast.error('OpenStax import failed. Check the backend logs.');
+    },
+  });
+
   const queryClient = useQueryClient();
   const totalPages = data ? Math.ceil(data.total / data.limit) : 0;
 
@@ -87,14 +103,22 @@ export function ContentPage() {
               ]}
               className="lg:max-w-xs"
             />
-            <div className="flex items-end">
+            <div className="flex items-end gap-2">
               <Button
                 variant="primary"
                 onClick={() => refreshMutation.mutate()}
-                disabled={refreshMutation.isPending}
+                disabled={refreshMutation.isPending || openstaxMutation.isPending}
               >
                 <RefreshCw size={16} className={refreshMutation.isPending ? 'animate-spin' : ''} />
-                {refreshMutation.isPending ? 'Importing...' : 'Import Books'}
+                {refreshMutation.isPending ? 'Importing...' : 'Import Gutendex'}
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => openstaxMutation.mutate()}
+                disabled={refreshMutation.isPending || openstaxMutation.isPending}
+              >
+                <BookOpen size={16} className={openstaxMutation.isPending ? 'animate-spin' : ''} />
+                {openstaxMutation.isPending ? 'Importing...' : 'Import OpenStax'}
               </Button>
             </div>
           </div>

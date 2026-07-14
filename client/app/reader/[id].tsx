@@ -801,6 +801,9 @@ export default function ReaderScreen() {
           locked ListenMode component. */}
       <PremiumUpsellModal
         visible={paywallOpen}
+        title={t('premium.title', 'Go Premium')}
+        body={t('premium.body', 'Unlock premium for ad-free reading, double your points, and get unlimited AI study material.')}
+        cta={t('premium.upgrade', 'Upgrade to Premium')}
         onClose={() => setPaywallOpen(false)}
       />
     </View>
