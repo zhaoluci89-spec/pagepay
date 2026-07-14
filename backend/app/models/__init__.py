@@ -547,6 +547,7 @@ class StudyMaterial(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(BigInteger, index=True)
     title: Mapped[str] = mapped_column(String(500))
+    exam_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
     raw_input: Mapped[str] = mapped_column(Text)
     parsed_structure: Mapped[str | None] = mapped_column(Text, nullable=True)
     ai_model_used: Mapped[str | None] = mapped_column(String(100), nullable=True)

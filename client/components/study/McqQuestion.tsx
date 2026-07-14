@@ -23,6 +23,8 @@ type McqQuestionProps = {
   correct_index: number;
   explanation: string;
   onAnswered: (correct: boolean) => void;
+  onBookmark?: () => void;
+  bookmarked?: boolean;
 };
 
 // Animated Touchable with spring physics
@@ -74,6 +76,8 @@ export function McqQuestion({
   correct_index,
   explanation,
   onAnswered,
+  onBookmark,
+  bookmarked,
 }: McqQuestionProps) {
   const [selected, setSelected] = useState<number | null>(null);
   const [showAnswer, setShowAnswer] = useState(false);
@@ -151,7 +155,23 @@ export function McqQuestion({
         </View>
       )}
       
-      <Text style={[styles.question, { color: tokens.ink }]}>{question}</Text>
+      <View style={styles.questionHeader}>
+        <Text style={[styles.question, { color: tokens.ink }]}>{question}</Text>
+        {onBookmark && (
+          <TouchableOpacity
+            onPress={onBookmark}
+            style={styles.bookmarkBtn}
+            accessibilityRole="button"
+            accessibilityLabel={bookmarked ? 'Remove bookmark' : 'Bookmark this question'}
+          >
+            <Ionicons
+              name={bookmarked ? 'bookmark' : 'bookmark-outline'}
+              size={22}
+              color={bookmarked ? tokens.mint : tokens.inkMuted}
+            />
+          </TouchableOpacity>
+        )}
+      </View>
       <View style={styles.options}>
         {options.map((opt, idx) => {
           const scale = useSharedValue(1);
@@ -258,6 +278,15 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     lineHeight: 22,
+    flex: 1,
+  },
+  questionHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  bookmarkBtn: {
+    padding: 4,
   },
   options: {
     gap: 10,

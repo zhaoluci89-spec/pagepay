@@ -3,6 +3,7 @@ import { apiFetch } from '@/src/shared/api/client';
 export type MaterialSummary = {
   id: number;
   title: string;
+  exam_type: string | null;
   asset_types: string[];
   created_at: string;
 };
@@ -17,6 +18,7 @@ export type AssetInfo = {
 export type MaterialDetail = {
   id: number;
   title: string;
+  exam_type: string | null;
   parsed_structure: Record<string, unknown> | null;
   assets: AssetInfo[];
   created_at: string;
@@ -25,6 +27,7 @@ export type MaterialDetail = {
 export type SowUploadResponse = {
   material_id: number;
   title: string;
+  exam_type: string | null;
   parsed_structure: Record<string, unknown> | null;
 };
 
@@ -56,11 +59,11 @@ export type UnlockResponse = {
   points_spent: number;
 };
 
-export async function uploadSowText(text: string): Promise<SowUploadResponse> {
+export async function uploadSowText(text: string, exam_type?: string | null): Promise<SowUploadResponse> {
   const res = await apiFetch('/api/v1/study/sow/upload', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text }),
+    body: JSON.stringify({ text, exam_type }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
@@ -69,14 +72,16 @@ export async function uploadSowText(text: string): Promise<SowUploadResponse> {
   return res.json();
 }
 
-export async function uploadSowImage(file: { uri: string; name: string; type: string }): Promise<SowUploadResponse> {
+export async function uploadSowImage(file: { uri: string; name: string; type: string }, exam_type?: string | null): Promise<SowUploadResponse> {
   const form = new FormData();
-  // React Native requires this specific format for file uploads
   form.append('file', {
     uri: file.uri,
     name: file.name,
     type: file.type || 'image/jpeg',
   } as any);
+  if (exam_type) {
+    form.append('exam_type', exam_type);
+  }
 
   const res = await apiFetch('/api/v1/study/sow/upload-image', {
     method: 'POST',
@@ -89,13 +94,16 @@ export async function uploadSowImage(file: { uri: string; name: string; type: st
   return res.json();
 }
 
-export async function uploadSowDocument(file: { uri: string; name: string; type: string }): Promise<SowUploadResponse> {
+export async function uploadSowDocument(file: { uri: string; name: string; type: string }, exam_type?: string | null): Promise<SowUploadResponse> {
   const form = new FormData();
   form.append('file', {
     uri: file.uri,
     name: file.name,
     type: file.type || 'application/pdf',
   } as any);
+  if (exam_type) {
+    form.append('exam_type', exam_type);
+  }
 
   const res = await apiFetch('/api/v1/study/sow/upload-document', {
     method: 'POST',

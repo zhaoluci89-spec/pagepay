@@ -20,10 +20,12 @@ import { PrimaryButton } from '@/components/PrimaryButton';
 type SowUploadCardProps = {
   uploading: boolean;
   uploadProgress?: number;
-  onUploadText: (text: string) => Promise<void>;
-  onUploadImage: () => Promise<void>;
-  onTakePhoto: () => Promise<void>;
-  onUploadDocument: () => Promise<void>;
+  examType: string | null;
+  onExamTypeChange: (examType: string | null) => void;
+  onUploadText: (text: string, examType: string | null) => Promise<void>;
+  onUploadImage: (examType: string | null) => Promise<void>;
+  onTakePhoto: (examType: string | null) => Promise<void>;
+  onUploadDocument: (examType: string | null) => Promise<void>;
 };
 
 const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
@@ -86,6 +88,8 @@ function AnimatedUploadIcon({ uploading, progress, tokens }: { uploading: boolea
 export function SowUploadCard({
   uploading,
   uploadProgress,
+  examType,
+  onExamTypeChange,
   onUploadText,
   onUploadImage,
   onTakePhoto,
@@ -104,7 +108,7 @@ export function SowUploadCard({
     if (!text.trim() || uploading) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     try {
-      await onUploadText(text.trim());
+      await onUploadText(text.trim(), examType);
       setText('');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch {
@@ -123,6 +127,14 @@ export function SowUploadCard({
     }
   };
 
+  const examTypes = [
+    { value: 'jamb', label: 'JAMB' },
+    { value: 'waec', label: 'WAEC' },
+    { value: 'neco', label: 'NECO' },
+    { value: 'nabteb', label: 'NABTEB' },
+    { value: 'custom', label: 'Custom' },
+  ];
+
   return (
     <Animated.View 
       entering={FadeInDown.duration(500).springify().damping(20).stiffness(200)}
@@ -131,12 +143,40 @@ export function SowUploadCard({
       <View style={styles.headerRow} accessibilityLabel="Upload Scheme of Work">
         <AnimatedUploadIcon uploading={uploading} progress={uploadProgress} tokens={tokens} />
         <Text style={[styles.title, { color: tokens.ink, fontFamily: 'SpaceGrotesk_700Bold' }]}>
-          Upload Scheme of Work
+          Upload Study Material
         </Text>
       </View>
       <Text style={[styles.subtitle, { color: tokens.inkMuted }]}>
         Paste text, upload a photo, or attach a PDF. AI will structure it into topics and generate study assets.
       </Text>
+
+      <View style={styles.examTypeRow}>
+        <Text style={[styles.examTypeLabel, { color: tokens.inkMuted }]}>Exam type:</Text>
+        <View style={styles.examTypeButtons}>
+          {examTypes.map((et) => (
+            <TouchableOpacity
+              key={et.value}
+              onPress={() => onExamTypeChange(examType === et.value ? null : et.value)}
+              style={[
+                styles.examTypeBtn,
+                { 
+                  borderColor: examType === et.value ? tokens.mint : tokens.border,
+                  backgroundColor: examType === et.value ? tokens.mintSoft : 'transparent',
+                }
+              ]}
+              accessibilityRole="button"
+              accessibilityState={{ selected: examType === et.value }}
+            >
+              <Text style={[
+                styles.examTypeBtnText,
+                { color: examType === et.value ? tokens.mint : tokens.inkMuted }
+              ]}>
+                {et.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
 
       <TextInput
         style={[styles.textInput, { backgroundColor: tokens.paper, borderColor: tokens.border, color: tokens.ink }]}
@@ -201,21 +241,21 @@ export function SowUploadCard({
           <AnimatedIconButton 
             icon="document"
             label="Doc"
-            onPress={() => handleIconPress(onUploadDocument)}
+            onPress={() => handleIconPress(() => onUploadDocument(examType))}
             disabled={uploading}
             tokens={tokens}
           />
           <AnimatedIconButton 
             icon="images"
             label="Image"
-            onPress={() => handleIconPress(onUploadImage)}
+            onPress={() => handleIconPress(() => onUploadImage(examType))}
             disabled={uploading}
             tokens={tokens}
           />
           <AnimatedIconButton 
             icon="camera"
             label="Photo"
-            onPress={() => handleIconPress(onTakePhoto)}
+            onPress={() => handleIconPress(() => onTakePhoto(examType))}
             disabled={uploading}
             tokens={tokens}
           />
@@ -300,6 +340,31 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 13,
     lineHeight: 18,
+  },
+  examTypeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  examTypeLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  examTypeButtons: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    flex: 1,
+  },
+  examTypeBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  examTypeBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
   },
   textInput: {
     borderRadius: 12,

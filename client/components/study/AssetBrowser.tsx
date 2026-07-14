@@ -59,6 +59,7 @@ export function AssetBrowser({ assets, userBalance, onUnlock, unlockedAssets, on
   const [mcqState, setMcqState] = useState<Record<number, Record<number, boolean>>>({});
   const [completedQuizzes, setCompletedQuizzes] = useState<Record<number, number>>({});
   const [submittingQuiz, setSubmittingQuiz] = useState<Record<number, boolean>>({});
+  const [bookmarkedQuestions, setBookmarkedQuestions] = useState<Record<number, Set<number>>>({});
   const scheme = useEffectiveScheme();
   const tokens = PagePay[scheme];
 
@@ -76,6 +77,19 @@ export function AssetBrowser({ assets, userBalance, onUnlock, unlockedAssets, on
       ...prev,
       [assetId]: { ...(prev[assetId] || {}), [questionIdx]: correct },
     }));
+  };
+
+  const toggleBookmark = (assetId: number, questionIdx: number) => {
+    setBookmarkedQuestions((prev) => {
+      const assetBookmarks = prev[assetId] || new Set<number>();
+      const newBookmarks = new Set(assetBookmarks);
+      if (newBookmarks.has(questionIdx)) {
+        newBookmarks.delete(questionIdx);
+      } else {
+        newBookmarks.add(questionIdx);
+      }
+      return { ...prev, [assetId]: newBookmarks };
+    });
   };
 
   const handleSubmitQuiz = async (assetId: number, questions: McqContent['questions']) => {
@@ -136,16 +150,22 @@ export function AssetBrowser({ assets, userBalance, onUnlock, unlockedAssets, on
 
       return (
         <View style={styles.assetContent}>
-          {mcq.questions.map((q, idx) => (
-            <McqQuestion
-              key={idx}
-              question={q.question}
-              options={q.options}
-              correct_index={q.correct_index}
-              explanation={q.explanation}
-              onAnswered={(correct) => handleMcqAnswered(asset.id, idx, correct)}
-            />
-          ))}
+          {mcq.questions.map((q, idx) => {
+            const assetBookmarks = bookmarkedQuestions[asset.id];
+            const isBookmarked = assetBookmarks ? assetBookmarks.has(idx) : false;
+            return (
+              <McqQuestion
+                key={idx}
+                question={q.question}
+                options={q.options}
+                correct_index={q.correct_index}
+                explanation={q.explanation}
+                onAnswered={(correct) => handleMcqAnswered(asset.id, idx, correct)}
+                onBookmark={() => toggleBookmark(asset.id, idx)}
+                bookmarked={isBookmarked}
+              />
+            );
+          })}
           {allAnswered && !completedQuizzes[asset.id] && (
             <PrimaryButton
               title={isSubmitting ? "Submitting..." : "Submit Quiz"}

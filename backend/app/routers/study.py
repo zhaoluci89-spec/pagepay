@@ -96,6 +96,7 @@ async def upload_sow(
     material = StudyMaterial(
         user_id=current_user.id,
         title=title,
+        exam_type=payload.exam_type,
         raw_input=payload.text,
         parsed_structure=_json.dumps(parsed) if parsed else None,
         ai_model_used=ai_result.get("provider"),
@@ -107,6 +108,7 @@ async def upload_sow(
     return SowUploadResponse(
         material_id=material.id,
         title=material.title,
+        exam_type=material.exam_type,
         parsed_structure=parsed,
     )
 
@@ -114,6 +116,7 @@ async def upload_sow(
 @router.post("/sow/upload-image", response_model=SowUploadResponse, status_code=201)
 async def upload_sow_image(
     file: UploadFile = File(...),
+    exam_type: str | None = Form(default=None),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -195,6 +198,7 @@ async def upload_sow_image(
     material = StudyMaterial(
         user_id=current_user.id,
         title=title,
+        exam_type=exam_type,
         raw_input=f"[IMAGE: {safe_name}]\n{extracted_text}",
         parsed_structure=_json.dumps(parsed) if parsed else None,
         ai_model_used=ai_result.get("provider"),
@@ -206,6 +210,7 @@ async def upload_sow_image(
     return SowUploadResponse(
         material_id=material.id,
         title=material.title,
+        exam_type=material.exam_type,
         parsed_structure=parsed,
     )
 
@@ -213,6 +218,7 @@ async def upload_sow_image(
 @router.post("/sow/upload-document", response_model=SowUploadResponse, status_code=201)
 async def upload_sow_document(
     file: UploadFile = File(...),
+    exam_type: str | None = Form(default=None),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -298,6 +304,7 @@ async def upload_sow_document(
     material = StudyMaterial(
         user_id=current_user.id,
         title=title,
+        exam_type=exam_type,
         raw_input=f"[DOCUMENT: {filename}]\n{extracted_text}",
         parsed_structure=_json.dumps(parsed) if parsed else None,
         ai_model_used=ai_result.get("provider"),
@@ -309,6 +316,7 @@ async def upload_sow_document(
     return SowUploadResponse(
         material_id=material.id,
         title=material.title,
+        exam_type=material.exam_type,
         parsed_structure=parsed,
     )
 
@@ -318,14 +326,14 @@ async def upload_sow_document(
 
 @router.get("/materials", response_model=list[MaterialSummary])
 async def list_materials(
+    exam_type: str | None = None,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(
-        select(StudyMaterial)
-        .where(StudyMaterial.user_id == current_user.id)
-        .order_by(StudyMaterial.created_at.desc())
-    )
+    query = select(StudyMaterial).where(StudyMaterial.user_id == current_user.id)
+    if exam_type:
+        query = query.where(StudyMaterial.exam_type == exam_type)
+    result = await db.execute(query.order_by(StudyMaterial.created_at.desc()))
     materials = result.scalars().all()
 
     out = []
@@ -334,6 +342,7 @@ async def list_materials(
         out.append(MaterialSummary(
             id=m.id,
             title=m.title,
+            exam_type=m.exam_type,
             asset_types=asset_types,
             created_at=m.created_at,
         ))
@@ -409,6 +418,7 @@ async def get_material(
     return MaterialDetail(
         id=material.id,
         title=material.title,
+        exam_type=material.exam_type,
         parsed_structure=parsed,
         assets=asset_list,
         created_at=material.created_at,

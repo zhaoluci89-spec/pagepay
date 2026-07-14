@@ -171,6 +171,8 @@ export default function RootLayout() {
         <Stack.Screen name="reader/[id]" options={{ headerShown: false }} />
         <Stack.Screen name="book/[id]" options={{ headerShown: false, title: 'Book' }} />
         <Stack.Screen name="study/chat/[id]" options={{ headerShown: false, title: 'Study Chat' }} />
+        <Stack.Screen name="study/exam-mode" options={{ headerShown: false, title: 'Exam Mode' }} />
+        <Stack.Screen name="study/srs-dashboard" options={{ headerShown: false, title: 'Review Dashboard' }} />
         <Stack.Screen name="tasks/[id]" options={{ headerShown: false, title: 'Task Detail' }} />
         <Stack.Screen name="tasks/[id]/complete" options={{ headerShown: false, title: 'Submit Proof' }} />
         <Stack.Screen name="tasks/profile" options={{ headerShown: false, title: 'Worker Profile' }} />

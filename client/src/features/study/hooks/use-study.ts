@@ -19,7 +19,7 @@ export function useMaterial(id: number) {
 export function useUploadSow() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ text }: { text: string }) => uploadSowText(text),
+    mutationFn: ({ text, exam_type }: { text: string; exam_type?: string | null }) => uploadSowText(text, exam_type),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['study', 'materials'] });
     },
@@ -29,7 +29,8 @@ export function useUploadSow() {
 export function useUploadSowImage() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (file: { uri: string; name: string; type: string }) => uploadSowImage(file),
+    mutationFn: (payload: { file: { uri: string; name: string; type: string }; exam_type?: string | null }) =>
+      uploadSowImage(payload.file, payload.exam_type),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['study', 'materials'] });
     },
@@ -39,7 +40,8 @@ export function useUploadSowImage() {
 export function useUploadSowDocument() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (file: { uri: string; name: string; type: string }) => uploadSowDocument(file),
+    mutationFn: (payload: { file: { uri: string; name: string; type: string }; exam_type?: string | null }) =>
+      uploadSowDocument(payload.file, payload.exam_type),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['study', 'materials'] });
     },

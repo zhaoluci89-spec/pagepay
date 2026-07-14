@@ -601,17 +601,20 @@ class SowUploadRequest(BaseModel):
     # caps the raw JSON body, but Pydantic is the right place to
     # enforce the domain limit too.
     text: str = Field(min_length=10, max_length=50_000, description="SOW or syllabus text to parse")
+    exam_type: str | None = Field(default=None, max_length=32, description="Exam type: jamb|waec|neco|nabteb|custom")
 
 
 class SowUploadResponse(BaseModel):
     material_id: int
     title: str
+    exam_type: str | None = None
     parsed_structure: dict | None = None
 
 
 class MaterialSummary(BaseModel):
     id: int
     title: str
+    exam_type: str | None = None
     asset_types: list[str]
     created_at: datetime
 
@@ -621,6 +624,7 @@ class MaterialSummary(BaseModel):
 class MaterialDetail(BaseModel):
     id: int
     title: str
+    exam_type: str | None = None
     parsed_structure: dict | None
     assets: list[dict]
     created_at: datetime

@@ -52,6 +52,7 @@ type AssetInfo = {
 type MaterialDetail = {
   id: number;
   title: string;
+  exam_type: string | null;
   parsed_structure: Record<string, unknown> | null;
   assets: AssetInfo[];
   created_at: string;
@@ -75,6 +76,7 @@ export default function StudyScreen() {
   const [uploadProgress, setUploadProgress] = useState<number | undefined>(undefined);
   const [studySessionId, setStudySessionId] = useState<number | null>(null);
   const [studyDuration, setStudyDuration] = useState<number>(0);
+  const [examType, setExamType] = useState<string | null>(null);
 
   // Load cached assets on mount
   useEffect(() => {
@@ -169,7 +171,7 @@ export default function StudyScreen() {
   const { pickDocument } = useDocumentPicker();
   const claimBonusMutation = useClaimQuizBonus();
 
-  const handleUploadText = async (text: string) => {
+  const handleUploadText = async (text: string, examType: string | null) => {
     setError(null);
     setRetryAction(null);
     setUploadProgress(0);
@@ -184,7 +186,7 @@ export default function StudyScreen() {
       
       // Simulate initial progress
       setUploadProgress(20);
-      const result = await uploadMutation.mutateAsync({ text });
+      const result = await uploadMutation.mutateAsync({ text, exam_type: examType });
       setUploadProgress(80);
       setSelectedMaterialId(result.material_id);
       const res = await apiFetch(`/api/v1/study/materials/${result.material_id}`);
@@ -198,11 +200,11 @@ export default function StudyScreen() {
       const message = err instanceof Error ? err.message : 'Upload failed';
       const specificError = categorizeError(message, 'upload text', t);
       setError(specificError);
-      setRetryAction(() => () => handleUploadText(text));
+      setRetryAction(() => () => handleUploadText(text, examType));
     }
   };
 
-  const handleUploadImage = async () => {
+  const handleUploadImage = async (examType: string | null) => {
     setError(null);
     setRetryAction(null);
     setUploadProgress(0);
@@ -228,7 +230,7 @@ export default function StudyScreen() {
       }
       
       setUploadProgress(20);
-      const result = await uploadImageMutation.mutateAsync({ uri: file.uri, name: file.name, type: file.type });
+      const result = await uploadImageMutation.mutateAsync({ file: { uri: file.uri, name: file.name, type: file.type }, exam_type: examType });
       setUploadProgress(80);
       setSelectedMaterialId(result.material_id);
       const res = await apiFetch(`/api/v1/study/materials/${result.material_id}`);
@@ -242,11 +244,11 @@ export default function StudyScreen() {
       const message = err instanceof Error ? err.message : 'Upload failed';
       const specificError = categorizeError(message, 'image upload', t);
       setError(specificError);
-      setRetryAction(() => handleUploadImage);
+      setRetryAction(() => () => handleUploadImage(examType));
     }
   };
 
-  const handleTakePhoto = async () => {
+  const handleTakePhoto = async (examType: string | null) => {
     setError(null);
     setRetryAction(null);
     setUploadProgress(0);
@@ -257,7 +259,7 @@ export default function StudyScreen() {
         return;
       }
       setUploadProgress(20);
-      const result = await uploadImageMutation.mutateAsync({ uri: file.uri, name: file.name, type: file.type });
+      const result = await uploadImageMutation.mutateAsync({ file: { uri: file.uri, name: file.name, type: file.type }, exam_type: examType });
       setUploadProgress(80);
       setSelectedMaterialId(result.material_id);
       const res = await apiFetch(`/api/v1/study/materials/${result.material_id}`);
@@ -271,11 +273,11 @@ export default function StudyScreen() {
       const message = err instanceof Error ? err.message : 'Upload failed';
       const specificError = categorizeError(message, 'photo upload', t);
       setError(specificError);
-      setRetryAction(() => handleTakePhoto);
+      setRetryAction(() => () => handleTakePhoto(examType));
     }
   };
 
-  const handleUploadDocument = async () => {
+  const handleUploadDocument = async (examType: string | null) => {
     setError(null);
     setRetryAction(null);
     setUploadProgress(0);
@@ -300,7 +302,7 @@ export default function StudyScreen() {
       }
       
       setUploadProgress(20);
-      const result = await uploadDocumentMutation.mutateAsync({ uri: file.uri, name: file.name, type: file.type });
+      const result = await uploadDocumentMutation.mutateAsync({ file: { uri: file.uri, name: file.name, type: file.type }, exam_type: examType });
       setUploadProgress(80);
       setSelectedMaterialId(result.material_id);
       const res = await apiFetch(`/api/v1/study/materials/${result.material_id}`);
@@ -314,7 +316,7 @@ export default function StudyScreen() {
       const message = err instanceof Error ? err.message : 'Upload failed';
       const specificError = categorizeError(message, 'document upload', t);
       setError(specificError);
-      setRetryAction(() => handleUploadDocument);
+      setRetryAction(() => () => handleUploadDocument(examType));
     }
   };
 
@@ -569,11 +571,35 @@ export default function StudyScreen() {
             <SowUploadCard
               uploading={uploadMutation.isPending || uploadImageMutation.isPending || uploadDocumentMutation.isPending}
               uploadProgress={uploadProgress}
+              examType={examType}
+              onExamTypeChange={setExamType}
               onUploadText={handleUploadText}
               onUploadImage={handleUploadImage}
               onTakePhoto={handleTakePhoto}
               onUploadDocument={handleUploadDocument}
             />
+
+            <TouchableOpacity
+              onPress={() => router.push('/study/exam-mode')}
+              style={[styles.examModeBtn, { backgroundColor: tokens.mint }]}
+              accessibilityRole="button"
+              accessibilityLabel="Start exam mode"
+            >
+              <Ionicons name="school-outline" size={20} color="#fff" />
+              <Text style={[styles.examModeBtnText, { color: '#fff' }]}>Exam Mode</Text>
+              <Ionicons name="chevron-forward" size={18} color="#fff" />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => router.push('/study/srs-dashboard')}
+              style={[styles.examModeBtn, { backgroundColor: tokens.card, borderColor: tokens.border, borderWidth: 1 }]}
+              accessibilityRole="button"
+              accessibilityLabel="Review dashboard"
+            >
+              <Ionicons name="repeat-outline" size={20} color={tokens.mint} />
+              <Text style={[styles.examModeBtnText, { color: tokens.mint }]}>Review Due</Text>
+              <Ionicons name="chevron-forward" size={18} color={tokens.mint} />
+            </TouchableOpacity>
 
             {isLoading ? (
               <View style={styles.stateBlock}>
@@ -589,7 +615,7 @@ export default function StudyScreen() {
                     activeOpacity={0.7}
                     style={[styles.materialCard, { backgroundColor: tokens.card, borderColor: tokens.border }]}
                     accessibilityRole="button"
-                    accessibilityLabel={`${m.title}, ${m.asset_types.join(', ')}, created ${new Date(m.created_at).toLocaleDateString()}`}
+                    accessibilityLabel={`${m.title}, ${m.exam_type || 'custom'}, ${m.asset_types.join(', ')}, created ${new Date(m.created_at).toLocaleDateString()}`}
                     accessibilityHint="Open this study material"
                   >
                     <View style={[styles.materialIcon, { backgroundColor: tokens.mintSoft }]}>
@@ -600,7 +626,7 @@ export default function StudyScreen() {
                         {m.title}
                       </Text>
                       <Text style={[styles.materialMeta, { color: tokens.inkMuted }]}>
-                        {m.asset_types.join(', ')} · {new Date(m.created_at).toLocaleDateString()}
+                        {(m.exam_type ? m.exam_type.toUpperCase() : 'CUSTOM')} · {m.asset_types.join(', ')} · {new Date(m.created_at).toLocaleDateString()}
                       </Text>
                     </View>
                     <Ionicons name="chevron-forward" size={18} color={tokens.inkMuted} accessibilityLabel="" />
@@ -815,6 +841,19 @@ const styles = StyleSheet.create({
   },
   materialMeta: {
     fontSize: 12,
+  },
+  examModeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderRadius: 14,
+    paddingVertical: 14,
+    marginBottom: 16,
+  },
+  examModeBtnText: {
+    fontSize: 15,
+    fontWeight: '700',
   },
   stateBlock: {
     borderRadius: 14,
