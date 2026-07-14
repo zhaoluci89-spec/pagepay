@@ -182,9 +182,9 @@ async def batch_generate_audio_for_work(
     # Fetch all units for this work (slices → units)
     stmt = (
         select(ReadingUnit)
-        .join(ContentCatalog, ContentCatalog.id == ReadingUnit.content_id)
+        .join(ContentCatalog, ContentCatalog.id == ReadingUnit.slice_id)
         .where(ContentCatalog.parent_work_id == work_id)
-        .order_by(ReadingUnit.id)
+        .order_by(ReadingUnit.unit_order)
     )
     result = await db.execute(stmt)
     units = result.scalars().all()

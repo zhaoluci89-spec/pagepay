@@ -547,8 +547,8 @@ async def get_content(content_id: int, db: AsyncSession = Depends(get_db)):
     from app.models import ReadingUnit
     unit_result = await db.execute(
         select(ReadingUnit.id)
-        .where(ReadingUnit.content_id == content_id)
-        .order_by(ReadingUnit.order)
+        .where(ReadingUnit.slice_id == content_id)
+        .order_by(ReadingUnit.unit_order)
         .limit(1)
     )
     unit_id = unit_result.scalar_one_or_none()

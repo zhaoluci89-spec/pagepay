@@ -403,7 +403,7 @@ async def list_recent_credits_for_user(
     transactions endpoint surfaces.
     """
     if since.tzinfo is not None:
-        since = since.utc().replace(tzinfo=None)
+        since = since.replace(tzinfo=None)
 
     rows = (
         await db.execute(
