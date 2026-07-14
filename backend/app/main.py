@@ -104,6 +104,18 @@ async def lifespan(app: FastAPI):
     # Apply pending migrations in background (idempotent on every boot).
     logger.info("Scheduling background migrations...")
     asyncio.create_task(_migrate_in_background())
+
+    # Pre-warm AdMob SSV verifier keys in background so the first
+    # callback doesn't block on a 10s HTTPS fetch.
+    async def _prewarm_admob_keys():
+        try:
+            from app.routers.ads import _fetch_verifier_keys
+            await _fetch_verifier_keys()
+            logger.info("AdMob SSV verifier keys pre-warmed")
+        except Exception as exc:
+            logger.warning("AdMob SSV key pre-warm failed (will retry on first callback): %s", exc)
+
+    asyncio.create_task(_prewarm_admob_keys())
     
     # Start Phase 7 background task processor
     # Only start if explicitly enabled via environment variable

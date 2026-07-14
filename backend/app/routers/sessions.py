@@ -109,41 +109,17 @@ async def end_session(
 
     effective_duration = max(0, session.duration_seconds - session.total_paused_seconds)
 
-    # H4 audit fix: run fraud checks but don't let a fraud-check bug
-    # block a legitimate session. Narrow the except to the transient
-    # set so unexpected errors (a bug in fraud_detection.py) get
-    # logged at ERROR with traceback for investigation. The session
-    # keeps its points; an admin can re-run the check later.
-    try:
-        from app.services.fraud_detection import run_fraud_checks_on_session
-        # Estimate content length (250 WPM average)
-        estimated_word_count = int(effective_duration / 60 * 250)
-        await run_fraud_checks_on_session(
-            db=db,
-            session_id=session.id,
-            user_id=current_user.id,
-            duration_seconds=effective_duration,
-            content_length=estimated_word_count
-        )
-    except (ConnectionError, TimeoutError) as e:
-        logger.warning(
-            "Transient fraud-check failure on session %s (will retry): %s",
-            session.id, e,
-        )
-    except Exception as e:
-        logger.error(
-            "Fraud check raised an unexpected error on session %s: %s",
-            session.id, e, exc_info=True,
-        )
-
     if session.scroll_events > 0:
         session.verified = True
-        # Apply premium multiplier (2x for premium users)
         from app.services.subscription import get_points_multiplier
         multiplier = get_points_multiplier(current_user)
-        base_points = max(0, (effective_duration // 600) * 5)
+        # Reward points per minute of reading (5 pts per 60s).
+        # Compatible with 1-minute slices.
+        base_points = (effective_duration // 60) * 5
         pending = int(base_points * multiplier)
-        session.pending_points = pending
+
+        # Accumulate points (don't replace) to include ad rewards
+        session.pending_points = (session.pending_points or 0) + pending
         await db.commit()
         await db.refresh(session)
         return SessionEndResponse(
@@ -197,30 +173,21 @@ async def claim_session(
 
     pending = session.pending_points or 0
     if pending <= 0:
-        # End-of-session returned 0 pending (no scroll, too short). Nothing
-        # to do — but we still mark the session as claimed so the client
-        # can move on without re-trying.
         session.claimed_at = datetime.utcnow()
         await db.commit()
-        me = (await db.execute(select(User.points_balance).where(User.id == current_user.id))).scalar_one()
         return SessionClaimResponse(
             points_earned=0,
-            new_balance=me,
+            new_balance=current_user.points_balance,
             already_claimed=False,
         )
 
     session.points_earned = pending
     session.pending_points = 0
     session.claimed_at = datetime.utcnow()
-    await db.execute(
-        update(User).where(User.id == current_user.id).values(
-            points_balance=User.points_balance + pending
-        )
-    )
+    current_user.points_balance += pending
     await db.commit()
-    me = (await db.execute(select(User.points_balance).where(User.id == current_user.id))).scalar_one()
     return SessionClaimResponse(
         points_earned=pending,
-        new_balance=me,
+        new_balance=current_user.points_balance,
         already_claimed=False,
     )

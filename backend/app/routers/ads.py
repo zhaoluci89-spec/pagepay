@@ -36,7 +36,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.database import get_db
 from app.limiter import limiter
-from app.models import AdEvent, AdRequest, User
+from app.models import AdEvent, AdRequest, ReadingSession, User
 from app.routers.auth import get_current_user
 from app.schemas import (
     AdCreditRequest,
@@ -167,7 +167,7 @@ async def issue_ad_request_token(
         )
 
     req = await ads_service.create_ad_request(
-        db=db, user_id=current_user.id, ad_unit=payload.ad_unit
+        db=db, user_id=current_user.id, ad_unit=payload.ad_unit, session_id=payload.session_id
     )
 
     # `custom_data` is the single piece of state the client carries
@@ -437,17 +437,13 @@ async def admob_ssv_callback(
         return {"status": "verification_success"}
 
     # ── 1. Signature verification ─────────────────────────────────
-    # CRITICAL: bad signature → 401, do NOT continue. The previous
-    # implementation logged a warning and continued, which let a
-    # network attacker forge SSV callbacks that polluted the
-    # AdEvent table with arbitrary user_id values. See
-    # `mark_ad_request_rejected` and `mark_ad_request_credited` in
-    # services/ads.py for the state machine.
+    # CRITICAL: bad signature → 401, do NOT continue.
     is_valid = await _verify_admob_ssv_signature(query_params, raw_query_string)
     if not is_valid:
         logger.warning(
-            "AdMob SSV: signature verification failed for tx=%s",
+            "AdMob SSV: signature verification failed for tx=%s. Params: %s",
             query_params.get("transaction_id", "unknown"),
+            query_params,
         )
         raise HTTPException(status_code=401, detail="Invalid SSV signature")
 
@@ -533,27 +529,41 @@ async def admob_ssv_callback(
             req.ad_unit, ad_unit_from_callback, user_id, transaction_id,
         )
 
-    # ── 6. Credit the user ────────────────────────────────────────
+    # ── 6. Credit the user or session ────────────────────────────────
     points = ads_service.points_for_rewarded_ad()
 
-    # Atomic update: mark the AdRequest as credited AND bump the
-    # wallet in the same transaction. If the AdRequest is already
-    # in a terminal state (race), mark_ad_request_credited is a
-    # no-op and we'll re-check.
+    # Mark the AdRequest as credited (audit trail)
     await ads_service.mark_ad_request_credited(
         db, req, points=points, admob_transaction_id=transaction_id or None
     )
-    await db.execute(
-        update(User)
-        .where(User.id == user_id)
-        .values(points_balance=User.points_balance + points)
-    )
 
-    # Insert the AdEvent row for the audit trail + the wallet
-    # transaction history (the existing /api/v1/wallet/transactions
-    # endpoint reads from AdEvent).
+    if req.session_id:
+        # Bundle reward into the reading session instead of global balance
+        await db.execute(
+            update(ReadingSession)
+            .where(ReadingSession.id == req.session_id)
+            .values(pending_points=ReadingSession.pending_points + points)
+        )
+        logger.info(
+            "AdMob SSV: session credit user=%s session=%s pts=%d",
+            user_id, req.session_id, points,
+        )
+    else:
+        # Fallback: credit the global wallet immediately
+        await db.execute(
+            update(User)
+            .where(User.id == user_id)
+            .values(points_balance=User.points_balance + points)
+        )
+        logger.info(
+            "AdMob SSV: global credit user=%s pts=%d",
+            user_id, points,
+        )
+
+    # Insert the AdEvent row for audit trail and wallet history
     event = AdEvent(
         user_id=user_id,
+        session_id=req.session_id,
         ad_unit=req.ad_unit,
         ad_type="rewarded",
         provider="admob",

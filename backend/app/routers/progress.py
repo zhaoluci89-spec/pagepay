@@ -15,7 +15,7 @@ import logging
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 
 from app.database import get_db
 from app.models import User, ContentCatalog, ReadingProgress, SliceBookmark, ReadingUnit
@@ -189,21 +189,23 @@ async def list_in_progress(
         select(ReadingProgress, ContentCatalog.title)
         .join(ContentCatalog, ContentCatalog.id == ReadingProgress.work_id)
         .where(ReadingProgress.user_id == current_user.id)
-        # MySQL doesn't support `NULLS LAST` — emulate with two keys
-        # (see /continue for rationale).
         .order_by(ReadingProgress.last_read_at.is_(None).asc(), ReadingProgress.last_read_at.desc())
     )
     out: list[WorkProgress] = []
+
+    slice_ids = [rp.current_slice_id for rp, _ in rows.all() if rp.current_slice_id]
+    slice_titles: dict[int, str] = {}
+    if slice_ids:
+        slice_rows = await db.execute(
+            select(ContentCatalog.id, ContentCatalog.title).where(ContentCatalog.id.in_(slice_ids))
+        )
+        for sid, stitle in slice_rows.all():
+            slice_titles[sid] = stitle
+
     for rp, work_title in rows.all():
-        # Slice title: if pointer is set, look up. Otherwise "Part 1".
         slice_title = f"{work_title} — Part {rp.current_slice_order}"
-        if rp.current_slice_id:
-            sl_row = await db.execute(
-                select(ContentCatalog.title).where(ContentCatalog.id == rp.current_slice_id)
-            )
-            t = sl_row.scalar_one_or_none()
-            if t:
-                slice_title = t
+        if rp.current_slice_id and rp.current_slice_id in slice_titles:
+            slice_title = slice_titles[rp.current_slice_id]
         percent = (
             int((rp.slices_completed / rp.total_slices) * 100)
             if rp.total_slices > 0 else 0
@@ -214,10 +216,6 @@ async def list_in_progress(
                 work_title=work_title,
                 slice_title=slice_title,
                 slice_order=rp.current_slice_order,
-                # Expose the current slice id so the home "Keep Reading"
-                # card can deep-link to /reader/{sliceId} instead of
-                # forcing the user to drill into the book detail screen
-                # and pick a slice. See v3 §4.1.
                 current_slice_id=rp.current_slice_id,
                 total_slices=rp.total_slices,
                 slices_completed=rp.slices_completed,
@@ -303,11 +301,11 @@ async def finish_slice(
 
     # Total slices snapshot (set on first finish).
     if rp is None:
-        total = await db.execute(
-            select(ContentCatalog.id)
+        total_count_row = await db.execute(
+            select(func.count(ContentCatalog.id))
             .where(ContentCatalog.parent_work_id == work_id)
         )
-        total_count = len(total.scalars().all())
+        total_count = total_count_row.scalar_one()
         rp = ReadingProgress(
             user_id=current_user.id,
             work_id=work_id,
@@ -383,10 +381,11 @@ async def start_work(
     if rp is not None:
         return {"ok": True, "already_tracked": True, "work_id": work_id}
 
-    total = await db.execute(
-        select(ContentCatalog.id).where(ContentCatalog.parent_work_id == work_id)
+    total_count_row = await db.execute(
+        select(func.count(ContentCatalog.id))
+        .where(ContentCatalog.parent_work_id == work_id)
     )
-    total_count = len(total.scalars().all())
+    total_count = total_count_row.scalar_one()
 
     db.add(
         ReadingProgress(

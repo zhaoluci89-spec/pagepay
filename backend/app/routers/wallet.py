@@ -67,6 +67,7 @@ async def list_transactions(
         .where(AdEvent.user_id == current_user.id)
         .where(AdEvent.credit_status == "credited")
         .where(AdEvent.user_points_credited > 0)
+        .where(AdEvent.session_id.is_(None))
         .order_by(AdEvent.created_at.desc())
         .limit(limit)
     )

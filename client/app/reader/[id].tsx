@@ -282,6 +282,16 @@ export default function ReaderScreen() {
       }
     })();
 
+    // Start the session immediately so that the pre-read ad can be linked
+    // to this session via session_id.
+    (async () => {
+      try {
+        await startSession();
+      } catch (e) {
+        console.error('Initial session start failed', e);
+      }
+    })();
+
     return () => {
       mounted = false;
       if (heartbeatRef.current) clearInterval(heartbeatRef.current);
@@ -482,13 +492,6 @@ export default function ReaderScreen() {
     // way.
     queryClient.invalidateQueries({ queryKey: ['me'] });
     queryClient.invalidateQueries({ queryKey: ['wallet'] });
-
-    try {
-      await startSession();
-    } catch (e) {
-      console.error('Start session failed', e);
-      router.replace('/(tabs)');
-    }
   };
 
   const onPreReadSkipped = () => {

@@ -10,7 +10,7 @@ import {
   View,
 } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
@@ -162,9 +162,22 @@ export default function HomeScreen() {
     });
   }, [inProgressQuery.data]);
 
+  const [refreshing, setRefreshing] = useState(false);
+
   const onRefresh = useCallback(async () => {
-    await Promise.all([meQuery.refetch(), feedQuery.refetch(), inProgressQuery.refetch()]);
+    setRefreshing(true);
+    try {
+      await Promise.all([meQuery.refetch(), feedQuery.refetch(), inProgressQuery.refetch()]);
+    } finally {
+      setRefreshing(false);
+    }
   }, [meQuery, feedQuery, inProgressQuery]);
+
+  useFocusEffect(
+    useCallback(() => {
+      meQuery.refetch();
+    }, [meQuery])
+  );
 
   const greeting = useMemo(() => {
     const h = new Date().getHours();
@@ -187,7 +200,7 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
-            refreshing={meQuery.isFetching || feedQuery.isFetching || inProgressQuery.isFetching}
+            refreshing={refreshing}
             onRefresh={onRefresh}
             tintColor={tokens.mint}
           />

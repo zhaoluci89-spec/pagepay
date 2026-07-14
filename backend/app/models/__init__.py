@@ -1170,6 +1170,9 @@ class AdRequest(Base):
     # user_id encoded in `custom_data` so a forged callback that guesses
     # a valid token still fails the user-mismatch check.
     user_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    # `session_id` links the ad request to a specific reading session for
+    # bundled rewards (Reading Time + Ad 1 + Ad 2).
+    session_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, index=True)
     # Which ad slot the client requested (e.g. "rewarded_android"). The
     # SSV handler validates this is a rewarded slot before crediting.
     ad_unit: Mapped[str] = mapped_column(String(100))

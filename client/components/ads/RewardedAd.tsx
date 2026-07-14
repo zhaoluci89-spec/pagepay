@@ -55,6 +55,8 @@ export type RewardedAdProps = {
   adUnitName: string;
   /** Current user ID for SSV customData. Required. */
   userId: number;
+  /** The active reading session id, if any. Used for bundling rewards. */
+  sessionId?: number;
   /** Title shown in modal. */
   title: string;
   /** Eyebrow above the title. */
@@ -92,6 +94,7 @@ export function RewardedAd(props: RewardedAdProps) {
     adUnit,
     adUnitName,
     userId,
+    sessionId,
     title,
     eyebrow,
     body,
@@ -158,7 +161,7 @@ export function RewardedAd(props: RewardedAdProps) {
         // post-ad poll can scope /recent-credits to "credits
         // that landed from this point on."
         tokenIssuedAtRef.current = new Date().toISOString();
-        const { custom_data } = await requestAdToken(adUnitName);
+        const { custom_data } = await requestAdToken(adUnitName, sessionId);
 
         const ad = RealRewardedAd.createForAdRequest(adUnit, {
           serverSideVerificationOptions: {

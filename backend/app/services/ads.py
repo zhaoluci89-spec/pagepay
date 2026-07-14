@@ -304,7 +304,7 @@ def points_for_rewarded_ad() -> int:
 
 
 async def create_ad_request(
-    db: AsyncSession, user_id: int, ad_unit: str
+    db: AsyncSession, user_id: int, ad_unit: str, session_id: int | None = None
 ) -> AdRequest:
     """Issue a new AdRequest row and return it.
 
@@ -325,6 +325,7 @@ async def create_ad_request(
     req = AdRequest(
         token=token,
         user_id=user_id,
+        session_id=session_id,
         ad_unit=ad_unit,
         status="issued",
         created_at=now,
