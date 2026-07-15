@@ -428,6 +428,7 @@ class AdRequestTokenRequest(BaseModel):
         max_length=100,
         description="The ad slot the client wants to show (e.g. 'rewarded_android').",
     )
+    session_id: int | None = Field(default=None, description="The active reading session id, if any.")
 
 
 class AdRequestTokenResponse(BaseModel):
