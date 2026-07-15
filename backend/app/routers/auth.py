@@ -47,8 +47,8 @@ def _generate_referral_code() -> str:
 
 
 def _hash_token(token: str) -> str:
-    """Hash a reset token for storage using bcrypt."""
-    return bcrypt.hashpw(token.encode(), bcrypt.gensalt(rounds=10)).decode()
+    """Hash a reset token for storage using SHA-256."""
+    return hashlib.sha256(token.encode()).hexdigest()
 
 
 def _hash_refresh_token(token: str) -> str:
