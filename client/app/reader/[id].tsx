@@ -517,7 +517,7 @@ export default function ReaderScreen() {
 
     const endRes = await endSession(sessionIdRef.current);
 
-    if (endRes?.requires_claim && endRes.pending_points > 0) {
+    if (endRes?.requires_claim) {
       try {
         await apiFetch('/api/v1/session/claim', {
           method: 'POST',
@@ -551,7 +551,20 @@ export default function ReaderScreen() {
       return;
     }
 
-    await endSession(sessionIdRef.current);
+    const endRes = await endSession(sessionIdRef.current);
+    if (endRes?.requires_claim) {
+      try {
+        await apiFetch('/api/v1/session/claim', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_id: sessionIdRef.current }),
+        });
+        queryClient.invalidateQueries({ queryKey: ['me'] });
+        queryClient.invalidateQueries({ queryKey: ['wallet'] });
+      } catch (e) {
+        console.warn('Session claim failed', e);
+      }
+    }
 
     try {
       await apiFetch(`/api/v1/progress/finish?slice_id=${Number(id)}`, { method: 'POST' });

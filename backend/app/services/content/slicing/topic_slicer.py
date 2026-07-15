@@ -701,16 +701,16 @@ async def slice_openstax_pages(
     parent: ContentCatalog,
     pages: list[PageTopic],
 ) -> int:
-    """Persist N page-based slices + reading units under `parent`.
+    """Persist N unit-level slices under `parent`.
 
-    Each page becomes one child row in content_catalog. The page's
-    body is split into reading units by split_into_units (with the
-    full-stop rule). Returns the number of slices persisted.
+    Each reading unit (~3k-5k chars, ~1 min read) becomes its own
+    child row in content_catalog. The page title is the topic label;
+    units within that topic are numbered as sub-slices so the user
+    sees "Calculus — Review of Functions — Part 1", "Part 2", etc.
 
-    Pages with no body or no sentence ends are dropped silently —
-    they're usually empty placeholder pages, and dropping them is
-    safer than shipping a malformed slice.
+    Returns the number of slices persisted.
 
+    Pages with no body or no sentence ends are dropped silently.
     Idempotency: if the parent already has children, returns the
     existing count without re-persisting.
     """
@@ -731,12 +731,16 @@ async def slice_openstax_pages(
         )
         return len(count_row.scalars().all())
 
-    total_slices = 0
-    for order, page in enumerate(pages, start=1):
+    # Collect every unit from every page in order. Each unit becomes
+    # its own slice so the reader shows ~1-minute sessions instead
+    # of dumping an entire topic (which can be 50k+ chars) into one
+    # screen.
+    all_units: list[tuple[str, str, int]] = []  # (page_title, unit_body, unit_order)
+    for page in pages:
         if not page.body_text.strip():
             logger.warning(
-                "slice_openstax_pages: dropped empty page '%s' (order=%d)",
-                page.title, order,
+                "slice_openstax_pages: dropped empty page '%s'",
+                page.title,
             )
             continue
         units = split_into_units(page.body_text)
@@ -746,29 +750,33 @@ async def slice_openstax_pages(
                 page.title,
             )
             continue
-        total_units = len(units)
-        combined_body = "\n\n".join(units)
-        word_count = len(combined_body.split())
-        char_count = len(combined_body)
-        # Prefix with the parent title so the user can tell which
-        # chapter this slice belongs to.
-        base_title = parent.title.split(";")[0].strip()
-        slice_title = f"{base_title} — {page.title}"
+        for unit_order, unit_body in enumerate(units, start=1):
+            all_units.append((page.title, unit_body, unit_order))
+
+    if not all_units:
+        return 0
+
+    total_slices = len(all_units)
+    base_title = parent.title.split(";")[0].strip()
+
+    for global_order, (page_title, unit_body, unit_order) in enumerate(all_units, start=1):
+        word_count = len(unit_body.split())
+        char_count = len(unit_body)
+        slice_title = f"{base_title} — {page_title} — Part {unit_order}"
         child = ContentCatalog(
             title=slice_title,
             content_type=parent.content_type,
             category=parent.category,
             source_url=None,
-            body_text=combined_body,
+            body_text=unit_body,
             author=parent.author,
-            estimated_read_minutes=max(1, total_units * 2),  # ~2 min per unit
+            estimated_read_minutes=1,
             parent_work_id=parent.id,
-            read_order=order,
-            total_slices=None,  # filled after we know the total
+            read_order=global_order,
+            total_slices=total_slices,
             word_count=word_count,
             char_count=char_count,
             body_sentinels_version=1,
-            # Inherit the parent's education + license fields.
             source=parent.source,
             education_level=parent.education_level,
             subject=parent.subject,
@@ -776,35 +784,22 @@ async def slice_openstax_pages(
             attribution_text=parent.attribution_text,
         )
         db.add(child)
-        await db.flush()  # populate child.id for FK on reading_units
-        for unit_order, unit_body in enumerate(units, start=1):
-            db.add(
-                ReadingUnit(
-                    slice_id=child.id,
-                    unit_order=unit_order,
-                    total_units=total_units,
-                    body_text=unit_body,
-                    char_count=len(unit_body),
-                    word_count=len(unit_body.split()),
-                    estimated_read_minutes=2,
-                )
+        await db.flush()
+        db.add(
+            ReadingUnit(
+                slice_id=child.id,
+                unit_order=1,
+                total_units=1,
+                body_text=unit_body,
+                char_count=char_count,
+                word_count=word_count,
+                estimated_read_minutes=1,
             )
-        total_slices += 1
+        )
 
-    if total_slices == 0:
-        # Every page was dropped. Don't persist a parent with no
-        # children — it'd be a "ghost" book in the catalog.
-        return 0
-
-    # Set total_slices on every child to the actual count.
-    await db.execute(
-        update(ContentCatalog)
-        .where(ContentCatalog.parent_work_id == parent.id)
-        .where(ContentCatalog.read_order.is_not(None))
-        .values(total_slices=total_slices)
-    )
-    # Demote the parent's per-row estimated minutes to the sum of
-    # child estimated minutes.
+    # Demote the parent: keep its body for re-slicing if needed, but mark
+    # its read-time as the total of all children so the catalog can still
+    # show "X min total" on the parent row.
     total_minutes = await db.execute(
         select(ContentCatalog.estimated_read_minutes)
         .where(ContentCatalog.parent_work_id == parent.id)

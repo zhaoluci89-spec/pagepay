@@ -135,6 +135,7 @@ export default function HomeScreen() {
         percent_complete: number;
         is_finished: boolean;
         last_read_at: string | null;
+        author: string | null;
       }>;
       return data.filter((w) => !w.is_finished);
     },
@@ -152,15 +153,13 @@ export default function HomeScreen() {
     const list = inProgressQuery.data ?? [];
     return list.map((w) => {
       const remainingSlices = Math.max(1, w.total_slices - w.slices_completed);
-      const minsPerSlice = (w as { estimated_read_minutes?: number }).estimated_read_minutes ?? 1;
-      const author = (w as { author?: string | null }).author ?? null;
       return {
         workId: w.work_id,
         sliceId: w.current_slice_id ?? 0,
         title: w.work_title,
-        author,
+        author: w.author ?? null,
         progress: w.percent_complete / 100,
-        minutesLeft: Math.max(1, Math.round(remainingSlices * minsPerSlice)),
+        minutesLeft: Math.max(1, remainingSlices),
       };
     });
   }, [inProgressQuery.data]);

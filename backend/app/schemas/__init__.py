@@ -238,6 +238,7 @@ class WorkProgress(BaseModel):
     percent_complete: int
     is_finished: bool
     last_read_at: datetime | None
+    author: str | None = None
 
 
 class SliceSummary(BaseModel):

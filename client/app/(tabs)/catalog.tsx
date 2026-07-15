@@ -167,12 +167,15 @@ export default function CatalogScreen() {
       const data = (await res.json()) as Array<{
         work_id: number;
         work_title: string;
+        slice_title: string;
         slice_order: number;
         current_slice_id: number | null;
         total_slices: number;
         slices_completed: number;
         percent_complete: number;
         is_finished: boolean;
+        last_read_at: string | null;
+        author: string | null;
       }>;
       return data.filter((w) => !w.is_finished);
     },
@@ -185,7 +188,7 @@ export default function CatalogScreen() {
       workId: w.work_id,
       sliceId: w.current_slice_id ?? 0,
       title: w.work_title,
-      author: null,
+      author: w.author ?? null,
       progress: w.percent_complete / 100,
       minutesLeft: Math.max(1, w.total_slices - w.slices_completed),
     }));

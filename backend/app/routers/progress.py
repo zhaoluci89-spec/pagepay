@@ -185,7 +185,7 @@ async def list_in_progress(
     every in-progress work as a card, newest first.
     """
     rows = await db.execute(
-        select(ReadingProgress, ContentCatalog.title)
+        select(ReadingProgress, ContentCatalog.title, ContentCatalog.author)
         .join(ContentCatalog, ContentCatalog.id == ReadingProgress.work_id)
         .where(ReadingProgress.user_id == current_user.id)
         .where(ReadingProgress.is_finished == False)  # noqa: E712
@@ -193,7 +193,7 @@ async def list_in_progress(
     )
     out: list[WorkProgress] = []
 
-    slice_ids = [rp.current_slice_id for rp, _ in rows.all() if rp.current_slice_id]
+    slice_ids = [rp.current_slice_id for rp, _, _ in rows.all() if rp.current_slice_id]
     slice_titles: dict[int, str] = {}
     if slice_ids:
         slice_rows = await db.execute(
@@ -202,7 +202,7 @@ async def list_in_progress(
         for sid, stitle in slice_rows.all():
             slice_titles[sid] = stitle
 
-    for rp, work_title in rows.all():
+    for rp, work_title, work_author in rows.all():
         slice_title = f"{work_title} — Part {rp.current_slice_order}"
         if rp.current_slice_id and rp.current_slice_id in slice_titles:
             slice_title = slice_titles[rp.current_slice_id]
@@ -222,6 +222,7 @@ async def list_in_progress(
                 percent_complete=min(100, percent),
                 is_finished=rp.is_finished,
                 last_read_at=rp.last_read_at,
+                author=work_author,
             )
         )
     return out
