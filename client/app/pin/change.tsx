@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -6,7 +6,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -15,7 +14,7 @@ import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
 import { apiFetch } from '@/src/shared/api/client';
-import { usePinInput } from '@/src/shared/hooks/use-pin-input';
+import { OtpInput } from '@/components/OtpInput';
 import { PagePay } from '@/constants/theme';
 import { useEffectiveScheme } from '@/src/shared/hooks/use-effective-scheme';
 import { PrimaryButton } from '@/components/PrimaryButton';
@@ -30,21 +29,12 @@ export default function ChangePinScreen() {
 
   const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { values: currentPin, inputs: currentInputs, handleChange: handleCurrentChange, reset: resetCurrent } = usePinInput({
-    length: PIN_LENGTH,
-    autoSubmit: false,
-  });
-  const { values: newPin, inputs: newInputs, handleChange: handleNewChange, reset: resetNew } = usePinInput({
-    length: PIN_LENGTH,
-    autoSubmit: false,
-  });
-  const { values: confirmPin, inputs: confirmInputs, handleChange: handleConfirmChange, reset: resetConfirm } = usePinInput({
-    length: PIN_LENGTH,
-    autoSubmit: false,
-  });
+  const [currentPin, setCurrentPin] = useState('');
+  const [newPin, setNewPin] = useState('');
+  const [confirmPin, setConfirmPin] = useState('');
 
   const submit = useCallback(async () => {
-    if (newPin.join('') !== confirmPin.join('')) {
+    if (newPin !== confirmPin) {
       Alert.alert(t('pin.error', { defaultValue: 'Error' }), t('pin.mismatch', { defaultValue: 'New PINs do not match.' }));
       return;
     }
@@ -54,7 +44,7 @@ export default function ChangePinScreen() {
       const res = await apiFetch('/api/v1/pin/change', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ current_pin: currentPin.join(''), new_pin: newPin.join('') }),
+        body: JSON.stringify({ current_pin: currentPin, new_pin: newPin }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -77,69 +67,39 @@ export default function ChangePinScreen() {
           <Text style={[styles.title, { color: tokens.ink }]}>{t('pin.change_title', { defaultValue: 'Change Transaction PIN' })}</Text>
 
           <Text style={[styles.label, { color: tokens.inkMuted }]}>{t('pin.current_pin_label', { defaultValue: 'Current PIN' })}</Text>
-          <View style={styles.codeRow}>
-            {currentPin.map((digit, i) => (
-              <TextInput
-                key={`current-${i}`}
-                ref={(el) => { currentInputs.current[i] = el; }}
-                value={digit}
-                onChangeText={(v) => handleCurrentChange(i, v)}
-                keyboardType="number-pad"
-                maxLength={PIN_LENGTH}
-                textContentType="oneTimeCode"
-                autoComplete="sms-otp"
-                returnKeyType="next"
-                editable={!verifying}
-                selectTextOnFocus
-                style={[styles.codeBox, { color: tokens.ink, backgroundColor: tokens.card, borderColor: tokens.mint }]}
-              />
-            ))}
-          </View>
+          <OtpInput
+            length={PIN_LENGTH}
+            onChange={setCurrentPin}
+            onSubmit={submit}
+            error={error}
+            verifying={verifying}
+            tokens={tokens}
+          />
 
           <Text style={[styles.label, { color: tokens.inkMuted, marginTop: 16 }]}>{t('pin.new_pin_label', { defaultValue: 'New PIN' })}</Text>
-          <View style={styles.codeRow}>
-            {newPin.map((digit, i) => (
-              <TextInput
-                key={`new-${i}`}
-                ref={(el) => { newInputs.current[i] = el; }}
-                value={digit}
-                onChangeText={(v) => handleNewChange(i, v)}
-                keyboardType="number-pad"
-                maxLength={PIN_LENGTH}
-                textContentType="oneTimeCode"
-                autoComplete="sms-otp"
-                returnKeyType="next"
-                editable={!verifying}
-                selectTextOnFocus
-                style={[styles.codeBox, { color: tokens.ink, backgroundColor: tokens.card, borderColor: tokens.mint }]}
-              />
-            ))}
-          </View>
+          <OtpInput
+            length={PIN_LENGTH}
+            onChange={setNewPin}
+            onSubmit={submit}
+            error={error}
+            verifying={verifying}
+            tokens={tokens}
+          />
 
           <Text style={[styles.label, { color: tokens.inkMuted, marginTop: 16 }]}>{t('pin.confirm_label', { defaultValue: 'Confirm New PIN' })}</Text>
-          <View style={styles.codeRow}>
-            {confirmPin.map((digit, i) => (
-              <TextInput
-                key={`confirm-${i}`}
-                ref={(el) => { confirmInputs.current[i] = el; }}
-                value={digit}
-                onChangeText={(v) => handleConfirmChange(i, v)}
-                keyboardType="number-pad"
-                maxLength={PIN_LENGTH}
-                textContentType="oneTimeCode"
-                autoComplete="sms-otp"
-                returnKeyType="done"
-                editable={!verifying}
-                selectTextOnFocus
-                style={[styles.codeBox, { color: tokens.ink, backgroundColor: tokens.card, borderColor: tokens.mint }]}
-              />
-            ))}
-          </View>
+          <OtpInput
+            length={PIN_LENGTH}
+            onChange={setConfirmPin}
+            onSubmit={submit}
+            error={error}
+            verifying={verifying}
+            tokens={tokens}
+          />
 
           <PrimaryButton
             title={verifying ? t('pin.changing', { defaultValue: 'Changing...' }) : t('pin.change_button', { defaultValue: 'Change PIN' })}
             onPress={submit}
-            disabled={verifying || currentPin.join('').length !== PIN_LENGTH || newPin.join('').length !== PIN_LENGTH || confirmPin.join('').length !== PIN_LENGTH}
+            disabled={verifying || currentPin.length !== PIN_LENGTH || newPin.length !== PIN_LENGTH || confirmPin.length !== PIN_LENGTH}
             style={{ marginTop: 24 }}
           />
         </ScrollView>
@@ -153,14 +113,4 @@ const styles = StyleSheet.create({
   scroll: { flexGrow: 1, alignItems: 'center', padding: 24 },
   title: { fontFamily: 'SpaceGrotesk_700Bold', fontSize: 22, marginBottom: 20 },
   label: { fontFamily: 'SpaceGrotesk_500Medium', fontSize: 13, marginBottom: 8, alignSelf: 'flex-start' },
-  codeRow: { flexDirection: 'row', gap: 12, justifyContent: 'center' },
-  codeBox: {
-    width: 56,
-    height: 64,
-    borderRadius: 14,
-    borderWidth: 2,
-    fontFamily: 'SpaceGrotesk_700Bold',
-    fontSize: 28,
-    textAlign: 'center',
-  },
 });

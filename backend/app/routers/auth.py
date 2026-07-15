@@ -346,20 +346,19 @@ async def forgot_password(
     )
     result = await db.execute(query)
     user = result.scalar_one_or_none()
-    if not user:
-        return {"ok": True, "message": "If that account exists, a reset code has been sent."}
 
     raw_token = secrets.token_urlsafe(32)
     token_hash = _hash_token(raw_token)
     expires_at = datetime.utcnow() + timedelta(minutes=15)
 
-    reset_token = PasswordResetToken(
-        user_id=user.id,
-        token_hash=token_hash,
-        expires_at=expires_at,
-    )
-    db.add(reset_token)
-    await db.commit()
+    if user:
+        reset_token = PasswordResetToken(
+            user_id=user.id,
+            token_hash=token_hash,
+            expires_at=expires_at,
+        )
+        db.add(reset_token)
+        await db.commit()
 
     otp = f"{secrets.randbelow(1_000_000):06d}"
     _cleanup_expired_otps()
@@ -367,14 +366,14 @@ async def forgot_password(
     _dev_otps[key] = (otp, raw_token, datetime.utcnow() + timedelta(minutes=15))
 
     try:
-        if user.email:
+        if user and user.email:
             await send_password_reset_otp_email(user.email, otp)
-        if user.phone:
+        if user and user.phone:
             await send_password_reset_sms(user.phone, otp)
     except Exception as exc:
         logger.error("Failed to send password reset OTP: %s", exc)
 
-    logger.info("Password reset OTP requested for user_id=%s", user.id)
+    logger.info("Password reset OTP requested for email=%s phone=%s user_id=%s", payload.email, payload.phone, user.id if user else None)
     return {
         "ok": True,
         "dev_otp": otp,

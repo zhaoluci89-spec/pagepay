@@ -1,11 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -15,8 +14,8 @@ import { useTranslation } from 'react-i18next';
 
 import { apiFetch } from '@/src/shared/api/client';
 import { setPendingWithdrawAfterPin } from '@/src/shared/lib/pin-verify-flag';
-import { usePinInput } from '@/src/shared/hooks/use-pin-input';
-import { getLastRoute, clearLastRoute } from '@/src/shared/lib/screen-memory';
+import { getLastRoute } from '@/src/shared/lib/screen-memory';
+import { OtpInput } from '@/components/OtpInput';
 import { PagePay } from '@/constants/theme';
 import { useEffectiveScheme } from '@/src/shared/hooks/use-effective-scheme';
 import { PrimaryButton } from '@/components/PrimaryButton';
@@ -34,14 +33,20 @@ export default function VerifyPinScreen() {
 
   const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { values: pin, inputs, handleChange, handleKeyPress, reset } = usePinInput({
-    length: 4,
-    onSubmit: async (fullPin) => {
+  const [pin, setPin] = useState('');
+
+  const handleSubmit = useCallback(
+    async (fullPin: string) => {
       if (fullPin.length !== 4) return;
       setVerifying(true);
       setError(null);
       try {
-        const endpoint = mode === 'setup' ? '/api/v1/pin/setup' : mode === 'change' ? '/api/v1/pin/change' : '/api/v1/pin/verify';
+        const endpoint =
+          mode === 'setup'
+            ? '/api/v1/pin/setup'
+            : mode === 'change'
+              ? '/api/v1/pin/change'
+              : '/api/v1/pin/verify';
         const body: Record<string, string> = { pin: fullPin };
 
         if (mode === 'setup') {
@@ -59,7 +64,10 @@ export default function VerifyPinScreen() {
 
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
-          const detail = typeof data?.detail === 'string' ? data.detail : t('pin.error_generic', { defaultValue: 'Something went wrong.' });
+          const detail =
+            typeof data?.detail === 'string'
+              ? data.detail
+              : t('pin.error_generic', { defaultValue: 'Something went wrong.' });
           setError(detail);
         } else {
           if (mode === 'verify') {
@@ -73,16 +81,15 @@ export default function VerifyPinScreen() {
           }
         }
       } catch {
-        setError(t('pin.error_connection', { defaultValue: 'Network error. Try again.' }));
+        setError(
+          t('pin.error_connection', { defaultValue: 'Network error. Try again.' })
+        );
       } finally {
         setVerifying(false);
       }
     },
-  });
-
-  useEffect(() => {
-    reset();
-  }, [reset]);
+    [mode, redirect, router, t]
+  );
 
   const title =
     mode === 'setup'
@@ -94,51 +101,42 @@ export default function VerifyPinScreen() {
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: tokens.paper }]}>
       <StatusBar style="auto" />
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={{ flex: 1 }}
+      >
         <ScrollView contentContainerStyle={styles.scroll}>
           <Text style={[styles.title, { color: tokens.ink }]}>{title}</Text>
           <Text style={[styles.subtitle, { color: tokens.inkMuted }]}>
             {t('pin.subtitle', {
-              defaultValue: mode === 'setup'
-                ? 'Create a 4-digit PIN for withdrawals and fallback authentication.'
-                : 'Enter your PIN to continue.',
+              defaultValue:
+                mode === 'setup'
+                  ? 'Create a 4-digit PIN for withdrawals and fallback authentication.'
+                  : 'Enter your PIN to continue.',
             })}
           </Text>
 
-          <View style={styles.codeRow}>
-            {pin.map((digit, i) => (
-              <TextInput
-                key={i}
-                ref={(el) => { inputs.current[i] = el; }}
-                value={digit}
-                onChangeText={(v) => handleChange(i, v)}
-                onKeyPress={(e) => handleKeyPress(i, e)}
-                keyboardType="number-pad"
-                maxLength={4}
-                textContentType="oneTimeCode"
-                autoComplete="sms-otp"
-                returnKeyType="done"
-                blurOnSubmit={false}
-                editable={!verifying}
-                selectTextOnFocus
-                style={[
-                  styles.codeBox,
-                  {
-                    color: tokens.ink,
-                    backgroundColor: tokens.card,
-                    borderColor: error ? '#ef4444' : tokens.mint,
-                  },
-                ]}
-              />
-            ))}
-          </View>
+          <OtpInput
+            length={4}
+            onChange={setPin}
+            onSubmit={handleSubmit}
+            error={error}
+            verifying={verifying}
+            tokens={tokens}
+          />
 
-          {error ? <Text style={[styles.error, { color: '#ef4444' }]}>{error}</Text> : null}
+          {error ? (
+            <Text style={[styles.error, { color: '#ef4444' }]}>{error}</Text>
+          ) : null}
 
           <PrimaryButton
-            title={verifying ? t('pin.verifying', { defaultValue: 'Verifying...' }) : t('pin.submit', { defaultValue: 'Confirm' })}
-            onPress={() => {}}
-            disabled={verifying || pin.join('').length !== 4}
+            title={
+              verifying
+                ? t('pin.verifying', { defaultValue: 'Verifying...' })
+                : t('pin.submit', { defaultValue: 'Confirm' })
+            }
+            onPress={() => handleSubmit(pin)}
+            disabled={verifying || pin.length !== 4}
             style={{ marginTop: 24 }}
           />
         </ScrollView>
@@ -149,18 +147,27 @@ export default function VerifyPinScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  scroll: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
-  title: { fontFamily: 'SpaceGrotesk_700Bold', fontSize: 22, marginBottom: 8 },
-  subtitle: { fontFamily: 'SpaceGrotesk_500Medium', fontSize: 14, textAlign: 'center', marginBottom: 32 },
-  codeRow: { flexDirection: 'row', gap: 12, justifyContent: 'center' },
-  codeBox: {
-    width: 56,
-    height: 64,
-    borderRadius: 14,
-    borderWidth: 2,
+  scroll: {
+    flexGrow: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  title: {
     fontFamily: 'SpaceGrotesk_700Bold',
-    fontSize: 28,
+    fontSize: 22,
+    marginBottom: 8,
+  },
+  subtitle: {
+    fontFamily: 'SpaceGrotesk_500Medium',
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: 32,
+  },
+  error: {
+    fontFamily: 'SpaceGrotesk_500Medium',
+    fontSize: 13,
+    marginTop: 12,
     textAlign: 'center',
   },
-  error: { fontFamily: 'SpaceGrotesk_500Medium', fontSize: 13, marginTop: 12, textAlign: 'center' },
 });
