@@ -109,22 +109,37 @@ async def get_continue_reading(
     # Look up the current slice (or the first slice if pointer is unset).
     slice_id = rp.current_slice_id
     if slice_id is None:
-        # Pointer was never set — point to the first slice of the work.
-        first_slice = await db.execute(
-            select(ContentCatalog)
-            .where(ContentCatalog.parent_work_id == rp.work_id)
-            .where(ContentCatalog.read_order == 1)
-            .limit(1)
-        )
-        first = first_slice.scalar_one_or_none()
-        if first is None:
-            # Work has no slices? Shouldn't happen post-slicing, but be safe.
-            raise HTTPException(status_code=500, detail="Work has no slices")
-        slice_id = first.id
+        # Pointer was never set — try to use current_slice_order if
+        # we have one, so we don't reset progress for legacy rows
+        # that have a valid order but no slice id.
+        if rp.current_slice_order:
+            ordered_slice = await db.execute(
+                select(ContentCatalog)
+                .where(ContentCatalog.parent_work_id == rp.work_id)
+                .where(ContentCatalog.read_order == rp.current_slice_order)
+                .limit(1)
+            )
+            ordered = ordered_slice.scalar_one_or_none()
+            if ordered is not None:
+                slice_id = ordered.id
+        if slice_id is None:
+            # Still nothing — point to the first slice of the work.
+            first_slice = await db.execute(
+                select(ContentCatalog)
+                .where(ContentCatalog.parent_work_id == rp.work_id)
+                .where(ContentCatalog.read_order == 1)
+                .limit(1)
+            )
+            first = first_slice.scalar_one_or_none()
+            if first is None:
+                # Work has no slices? Shouldn't happen post-slicing, but be safe.
+                raise HTTPException(status_code=500, detail="Work has no slices")
+            slice_id = first.id
+            rp.current_slice_order = 1
         await db.execute(
             update(ReadingProgress)
             .where(ReadingProgress.id == rp.id)
-            .values(current_slice_id=slice_id, current_slice_order=1)
+            .values(current_slice_id=slice_id, current_slice_order=rp.current_slice_order)
         )
         await db.commit()
 

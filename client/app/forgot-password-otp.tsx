@@ -24,11 +24,11 @@ import { PrimaryButton } from '@/components/PrimaryButton';
 const OTP_LENGTH = 6;
 const CODE_BOX_GAP = 10;
 
-export default function VerifyEmailCodeScreen() {
+export default function ForgotPasswordOtpScreen() {
   const { t } = useTranslation();
   const router = useRouter();
-  const params = useLocalSearchParams<{ email?: string }>();
-  const email = params.email;
+  const params = useLocalSearchParams<{ identifier?: string }>();
+  const identifier = params.identifier || '';
   const scheme = useEffectiveScheme();
   const tokens = PagePay[scheme];
   const { width } = useWindowDimensions();
@@ -43,35 +43,41 @@ export default function VerifyEmailCodeScreen() {
     justifyContent: 'center' as const,
   };
 
-  const [sending, setSending] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
   const handleSubmit = useCallback(async (fullCode: string) => {
-    if (!email || fullCode.length !== OTP_LENGTH) return;
+    if (!identifier || fullCode.length !== OTP_LENGTH) return;
     setVerifying(true);
     setError(null);
     setMessage(null);
     try {
-      const res = await apiFetch('/api/v1/auth/verify-email-code', {
+      const isEmail = identifier.includes('@');
+      const body: Record<string, string> = { otp: fullCode };
+      if (isEmail) body.email = identifier;
+      else body.phone = identifier;
+
+      const res = await apiFetch('/api/v1/auth/forgot-password/verify-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, code: fullCode }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        const detail = typeof data?.detail === 'string' ? data.detail : t('verify_email.error_generic');
+        const detail = typeof data?.detail === 'string' ? data.detail : t('forgot_password_otp.error_generic', { defaultValue: 'Invalid code.' });
         setError(detail);
       } else {
-        setMessage(t('verify_email.success'));
-        setTimeout(() => router.replace('/(tabs)'), 1200);
+        const data = await res.json().catch(() => ({ reset_token: '' }));
+        setMessage(t('forgot_password_otp.success', { defaultValue: 'Code verified.' }));
+        setTimeout(() => router.replace({ pathname: '/reset-password', params: { token: data.reset_token || '' } }), 800);
       }
     } catch {
-      setError(t('verify_email.error_connection'));
+      setError(t('forgot_password_otp.error_connection', { defaultValue: 'Network error. Try again.' }));
     } finally {
       setVerifying(false);
     }
-  }, [email, router, t]);
+  }, [identifier, router, t]);
 
   const { values: code, inputs, handleChange, handleKeyPress, reset } = usePinInput({
     length: OTP_LENGTH,
@@ -82,35 +88,41 @@ export default function VerifyEmailCodeScreen() {
     reset();
   }, [reset]);
 
+  const handleBack = useCallback(() => {
+    router.back();
+  }, [router]);
+
   const handleResend = useCallback(async () => {
-    setSending(true);
     setError(null);
     setMessage(null);
     try {
-      const res = await apiFetch('/api/v1/auth/resend-verification', {
+      const isEmail = identifier.includes('@');
+      const body: Record<string, string> = isEmail ? { email: identifier } : { phone: identifier };
+      const res = await apiFetch('/api/v1/auth/forgot-password', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        setError(typeof data?.detail === 'string' ? data.detail : t('verify_email.resend_error'));
+        setError(typeof data?.detail === 'string' ? data.detail : t('forgot_password_otp.resend_error', { defaultValue: 'Could not resend code.' }));
       } else {
-        setMessage(t('verify_email.resend_success'));
+        setMessage(t('forgot_password_otp.resend_success', { defaultValue: 'New code sent.' }));
       }
     } catch {
-      setError(t('verify_email.error_connection'));
-    } finally {
-      setSending(false);
+      setError(t('forgot_password_otp.error_connection', { defaultValue: 'Network error. Try again.' }));
     }
-  }, [t]);
+  }, [identifier, t]);
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: tokens.paper }]}>
       <StatusBar style="auto" />
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={styles.scroll}>
-          <Text style={[styles.title, { color: tokens.ink }]}>{t('verify_email.title')}</Text>
+          <Text style={[styles.title, { color: tokens.ink }]}>{t('forgot_password_otp.title', { defaultValue: 'Enter reset code' })}</Text>
           <Text style={[styles.subtitle, { color: tokens.inkMuted }]}>
-            {t('verify_email.subtitle', { email })}
+            {t('forgot_password_otp.subtitle', { defaultValue: 'We sent a 6-digit code to' })}{'\n'}
+            <Text style={{ fontWeight: '600', color: tokens.ink }}>{identifier || ''}</Text>
           </Text>
 
           <View style={codeRowStyle}>
@@ -146,17 +158,24 @@ export default function VerifyEmailCodeScreen() {
           {message ? <Text style={[styles.success, { color: tokens.mint }]}>{message}</Text> : null}
 
           <PrimaryButton
-            title={verifying ? t('verify_email.verifying') : t('verify_email.submit')}
+            title={verifying ? t('forgot_password_otp.verifying', { defaultValue: 'Verifying...' }) : t('forgot_password_otp.submit', { defaultValue: 'Verify code' })}
             onPress={() => handleSubmit(code.join(''))}
             disabled={verifying || code.join('').length !== OTP_LENGTH}
             style={{ marginTop: 24 }}
           />
 
-          <Pressable onPress={handleResend} disabled={sending} style={styles.resend}>
-            <Text style={[styles.resendText, { color: tokens.mint }]}>
-              {sending ? t('verify_email.resending') : t('verify_email.resend')}
-            </Text>
-          </Pressable>
+          <View style={styles.tertiaryRow}>
+            <Pressable onPress={handleBack} hitSlop={6}>
+              <Text style={[styles.tertiaryLink, { color: tokens.mint }]}>
+                {t('forgot_password_otp.back', { defaultValue: '← Back' })}
+              </Text>
+            </Pressable>
+            <Pressable onPress={handleResend} disabled={verifying}>
+              <Text style={[styles.tertiaryLink, { color: tokens.mint }]}>
+                {t('forgot_password_otp.resend', { defaultValue: 'Resend code' })}
+              </Text>
+            </Pressable>
+          </View>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -170,7 +189,6 @@ const styles = StyleSheet.create({
   subtitle: { fontFamily: 'SpaceGrotesk_500Medium', fontSize: 14, textAlign: 'center', marginBottom: 32 },
   codeRow: { flexDirection: 'row', justifyContent: 'center' },
   codeBox: {
-    height: 64,
     borderRadius: 14,
     borderWidth: 2,
     fontFamily: 'SpaceGrotesk_700Bold',
@@ -179,6 +197,6 @@ const styles = StyleSheet.create({
   },
   error: { fontFamily: 'SpaceGrotesk_500Medium', fontSize: 13, marginTop: 12, textAlign: 'center' },
   success: { fontFamily: 'SpaceGrotesk_500Medium', fontSize: 13, marginTop: 12, textAlign: 'center' },
-  resend: { marginTop: 24 },
-  resendText: { fontFamily: 'SpaceGrotesk_500Medium', fontSize: 14 },
+  tertiaryRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 20, marginTop: 24 },
+  tertiaryLink: { fontSize: 14, fontWeight: '600' },
 });

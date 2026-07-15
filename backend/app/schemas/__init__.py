@@ -1281,6 +1281,19 @@ class ForgotPasswordRequest(BaseModel):
     phone: str | None = None
 
 
+class ForgotPasswordVerifyOtpRequest(BaseModel):
+    """Verify OTP for forgot-password flow."""
+    email: str | None = None
+    phone: str | None = None
+    otp: str = Field(min_length=6, max_length=6)
+
+
+class ForgotPasswordVerifyOtpResponse(BaseModel):
+    """Response after OTP verification."""
+    ok: bool
+    reset_token: str | None = None
+
+
 class ResetPasswordRequest(BaseModel):
     """Reset password with a token."""
     token: str

@@ -460,10 +460,10 @@
   },
   "forgot_password": {
     "title": "Reset your password.",
-    "subtitle": "We'll send you a reset link.",
+    "subtitle": "We'll send you a reset code.",
     "identifier_label": "Email or phone",
     "identifier_placeholder": "you@example.com",
-    "send_button": "Send reset link",
+    "send_button": "Send reset code",
     "sending": "Sending...",
     "remember": "Remember your password?",
     "back_to_signin": "Back to sign in →",
@@ -472,6 +472,19 @@
       "send_failed": "Something went wrong. Try again.",
       "connection_error": "Can't reach the server. Check your connection."
     }
+  },
+  "forgot_password_otp": {
+    "title": "Enter reset code",
+    "subtitle": "We sent a 6-digit code to",
+    "verifying": "Verifying...",
+    "submit": "Verify code",
+    "back": "← Back",
+    "resend": "Resend code",
+    "error_generic": "Invalid code.",
+    "resend_error": "Could not resend code.",
+    "error_connection": "Network error. Try again.",
+    "success": "Code verified.",
+    "resend_success": "New code sent."
   },
   "reset_password": {
     "title": "Choose a new password.",

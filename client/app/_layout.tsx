@@ -37,11 +37,12 @@ function useAuthGate() {
       const token = await getToken();
       const inAuthGroup = segments[0] === '(auth)';
       const inOnboardingGroup = segments[0] === '(onboarding)';
+      const inForgotFlow = segments[0] === 'forgot-password' || segments[0] === 'forgot-password-otp' || segments[0] === 'reset-password';
 
       if (!token) {
         if (!onboardingCompleted && !inOnboardingGroup) {
           (router as any).replace('/(onboarding)');
-        } else if (onboardingCompleted && !inAuthGroup) {
+        } else if (onboardingCompleted && !inAuthGroup && !inForgotFlow) {
           (router as any).replace('/(auth)/');
         }
       } else if (token && inAuthGroup && segments[1] !== 'verify-email-code') {
@@ -64,7 +65,7 @@ function useAuthGate() {
   // instead of showing the error to the user.
   useEffect(() => {
     setOnUnauthenticated(() => {
-      if (segments[0] !== '(auth)' && segments[0] !== '(onboarding)') {
+      if (segments[0] !== '(auth)' && segments[0] !== '(onboarding)' && segments[0] !== 'forgot-password' && segments[0] !== 'forgot-password-otp' && segments[0] !== 'reset-password') {
         (router as any).replace('/(auth)/');
       }
     });
@@ -183,6 +184,7 @@ export default function RootLayout() {
         <Stack.Screen name="sponsor/tasks/create" options={{ headerShown: false, title: 'Create Task' }} />
         <Stack.Screen name="sponsor/tasks/[id]" options={{ headerShown: false, title: 'Task Submissions' }} />
         <Stack.Screen name="forgot-password" options={{ headerShown: false, title: 'Reset Password' }} />
+        <Stack.Screen name="forgot-password-otp" options={{ headerShown: false, title: 'Enter OTP' }} />
         <Stack.Screen name="reset-password" options={{ headerShown: false, title: 'New Password' }} />
         <Stack.Screen name="buy-airtime" options={{ headerShown: false, title: 'Buy Airtime' }} />
         <Stack.Screen name="buy-data" options={{ headerShown: false, title: 'Buy Data' }} />

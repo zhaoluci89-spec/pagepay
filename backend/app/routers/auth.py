@@ -11,10 +11,11 @@ from sqlalchemy import select, insert
 from jose import JWTError, jwt
 from app.database import get_db
 from app.models import User, PasswordResetToken, RefreshToken
-from app.schemas import UserRegister, TokenResponse, UserMe, ChangePasswordRequest, ForgotPasswordRequest, ResetPasswordRequest, LegalPageResponse, EmailVerificationRequest, EmailVerificationCodeRequest, GoogleAuthRequest
+from app.schemas import UserRegister, TokenResponse, UserMe, ChangePasswordRequest, ForgotPasswordRequest, ForgotPasswordVerifyOtpRequest, ResetPasswordRequest, LegalPageResponse, EmailVerificationRequest, EmailVerificationCodeRequest, GoogleAuthRequest
 from app.services.auth import hash_password, verify_password, create_access_token, create_refresh_token, get_current_user, revoke_jwt
 from app.services.sanitize import sanitize_for_log
-from app.services.email import send_verification_email, send_password_reset_email
+from app.services.email import send_verification_email, send_password_reset_email, send_password_reset_otp_email
+from app.services.sms import send_password_reset_sms
 from app.services.user_audit import log_user_action, get_user_audit_logs
 from app.config import settings
 from app.limiter import limiter
@@ -53,6 +54,16 @@ def _hash_token(token: str) -> str:
 def _hash_refresh_token(token: str) -> str:
     """Hash a refresh token for storage using SHA-256."""
     return hashlib.sha256(token.encode()).hexdigest()
+
+
+_dev_otps: dict[str, tuple[str, str, datetime]] = {}
+
+
+def _cleanup_expired_otps() -> None:
+    now = datetime.utcnow()
+    expired = [k for k, (_, _, exp) in _dev_otps.items() if exp < now]
+    for k in expired:
+        del _dev_otps[k]
 
 
 @router.post("/register", response_model=TokenResponse, status_code=201)
@@ -336,7 +347,7 @@ async def forgot_password(
     result = await db.execute(query)
     user = result.scalar_one_or_none()
     if not user:
-        return {"ok": True, "message": "If that account exists, a reset link has been sent."}
+        return {"ok": True, "message": "If that account exists, a reset code has been sent."}
 
     raw_token = secrets.token_urlsafe(32)
     token_hash = _hash_token(raw_token)
@@ -350,18 +361,46 @@ async def forgot_password(
     db.add(reset_token)
     await db.commit()
 
-    # Send password reset email (non-blocking)
+    otp = f"{secrets.randbelow(1_000_000):06d}"
+    _cleanup_expired_otps()
+    key = payload.email or payload.phone or ""
+    _dev_otps[key] = (otp, raw_token, datetime.utcnow() + timedelta(minutes=15))
+
     try:
         if user.email:
-            await send_password_reset_email(user.email, raw_token)
+            await send_password_reset_otp_email(user.email, otp)
+        if user.phone:
+            await send_password_reset_sms(user.phone, otp)
     except Exception as exc:
-        logger.error("Failed to send password reset email to %s: %s", sanitize_for_log(user.email), exc)
+        logger.error("Failed to send password reset OTP: %s", exc)
 
-    logger.info("Password reset requested for user_id=%s", user.id)
+    logger.info("Password reset OTP requested for user_id=%s", user.id)
     return {
         "ok": True,
-        "message": "If that account exists, a reset link has been sent.",
+        "dev_otp": otp,
+        "message": "If that account exists, a reset code has been sent.",
     }
+
+
+@router.post("/forgot-password/verify-otp")
+async def verify_forgot_password_otp(
+    payload: ForgotPasswordVerifyOtpRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    key = payload.email or payload.phone or ""
+    stored = _dev_otps.get(key)
+    if not stored:
+        raise HTTPException(status_code=400, detail="No OTP request found. Request a new code.")
+    otp, raw_token, expires_at = stored
+    if datetime.utcnow() > expires_at:
+        del _dev_otps[key]
+        raise HTTPException(status_code=400, detail="OTP expired. Request a new code.")
+    if payload.otp != otp:
+        raise HTTPException(status_code=400, detail="Invalid OTP")
+
+    del _dev_otps[key]
+
+    return {"ok": True, "reset_token": raw_token}
 
 
 @router.post("/reset-password")

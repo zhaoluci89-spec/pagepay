@@ -71,12 +71,7 @@ export default function ForgotPasswordScreen() {
 
       const data = await res.json();
       setSuccess(true);
-      // In production the token goes via email/SMS; dev mode shows it inline.
-      if (data.dev_token) {
-        router.replace({ pathname: '/reset-password', params: { token: data.dev_token } });
-      } else {
-        setTimeout(() => router.replace('/(auth)/'), 2000);
-      }
+      router.replace({ pathname: '/forgot-password-otp', params: { identifier: identifier.trim() } });
     } catch {
       setFormError(t('forgot_password.errors.connection_error'));
       setErrorTrigger(true);
