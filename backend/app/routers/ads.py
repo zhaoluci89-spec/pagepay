@@ -538,16 +538,36 @@ async def admob_ssv_callback(
     )
 
     if req.session_id:
-        # Bundle reward into the reading session instead of global balance
-        await db.execute(
-            update(ReadingSession)
-            .where(ReadingSession.id == req.session_id)
-            .values(pending_points=ReadingSession.pending_points + points)
-        )
-        logger.info(
-            "AdMob SSV: session credit user=%s session=%s pts=%d",
-            user_id, req.session_id, points,
-        )
+        # Bundle reward into the reading session instead of global balance.
+        # If the session is already claimed, credit the user's wallet
+        # directly — the pending_points window has closed.
+        session_claimed = False
+        if req.session_id:
+            session_row = await db.execute(
+                select(ReadingSession.claimed_at).where(ReadingSession.id == req.session_id)
+            )
+            session_claimed = session_row.scalar_one_or_none() is not None
+
+        if session_claimed:
+            await db.execute(
+                update(User)
+                .where(User.id == user_id)
+                .values(points_balance=User.points_balance + points)
+            )
+            logger.info(
+                "AdMob SSV: late credit -> wallet user=%s session=%s pts=%d",
+                user_id, req.session_id, points,
+            )
+        else:
+            await db.execute(
+                update(ReadingSession)
+                .where(ReadingSession.id == req.session_id)
+                .values(pending_points=ReadingSession.pending_points + points)
+            )
+            logger.info(
+                "AdMob SSV: session credit user=%s session=%s pts=%d",
+                user_id, req.session_id, points,
+            )
     else:
         # Fallback: credit the global wallet immediately
         await db.execute(

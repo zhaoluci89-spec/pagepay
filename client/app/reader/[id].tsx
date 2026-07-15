@@ -477,8 +477,6 @@ export default function ReaderScreen() {
     return `${m}:${s.toString().padStart(2, '0')}`;
   };
 
-  const potentialPoints = Math.max(0, Math.floor(elapsedSeconds / 600) * 5);
-
   // Pre-read gate handlers.
   const onPreReadClaimed = async (_info: {
     pointsCredited: number;
@@ -552,7 +550,7 @@ export default function ReaderScreen() {
     }
 
     const endRes = await endSession(sessionIdRef.current);
-    if (endRes?.requires_claim) {
+    if (endRes?.requires_claim && endRes.pending_points > 0) {
       try {
         await apiFetch('/api/v1/session/claim', {
           method: 'POST',
@@ -602,7 +600,6 @@ export default function ReaderScreen() {
             {sessionId ? (paused ? t('reader.paused') : t('reader.active')) : t('reader.waiting')}
           </Text>
           <Text style={[styles.timerText, { color: tokens.ink }]}>{formatTime(elapsedSeconds)}</Text>
-          <Text style={[styles.pointsText, { color: tokens.mint }]}>{t('reader.points_suffix', { points: potentialPoints })}</Text>
         </View>
       </View>
 
@@ -849,7 +846,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontVariant: Platform.OS === 'ios' ? ['tabular-nums'] : undefined,
   },
-  pointsText: { fontSize: 14, fontWeight: '600' },
   scroll: { flex: 1, padding: 16 },
   body: { fontSize: 17, lineHeight: 26 },
   modalOverlay: {

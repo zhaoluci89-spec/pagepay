@@ -168,20 +168,9 @@ async def claim_session(
         )
 
     pending = session.pending_points or 0
-    if pending <= 0:
-        # SSV may still be in flight. Do NOT mark the session as
-        # claimed yet — a later retry can pick up the points once
-        # they land. Returning already_claimed=false lets the client
-        # know the session is still open.
-        await db.commit()
-        return SessionClaimResponse(
-            points_earned=0,
-            new_balance=current_user.points_balance,
-            already_claimed=False,
-        )
-
-    session.points_earned = pending
-    session.pending_points = 0
+    if pending > 0:
+        session.points_earned = pending
+        session.pending_points = 0
     session.claimed_at = datetime.utcnow()
     current_user.points_balance += pending
     await db.commit()
