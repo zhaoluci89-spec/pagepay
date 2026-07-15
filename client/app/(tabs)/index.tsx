@@ -60,7 +60,8 @@ export default function HomeScreen() {
   const { data: adConfig } = useQuery({
     queryKey: ['ads-config'],
     queryFn: async () => {
-      const res = await apiFetch('/api/v1/config/ads?env=dev');
+      const env = __DEV__ ? 'dev' : 'prod';
+      const res = await apiFetch(`/api/v1/config/ads?env=${env}`);
       if (!res.ok) return {};
       return (await res.json()) as Record<string, string>;
     },
@@ -151,13 +152,15 @@ export default function HomeScreen() {
     const list = inProgressQuery.data ?? [];
     return list.map((w) => {
       const remainingSlices = Math.max(1, w.total_slices - w.slices_completed);
+      const minsPerSlice = (w as { estimated_read_minutes?: number }).estimated_read_minutes ?? 1;
+      const author = (w as { author?: string | null }).author ?? null;
       return {
         workId: w.work_id,
         sliceId: w.current_slice_id ?? 0,
         title: w.work_title,
-        author: null,
+        author,
         progress: w.percent_complete / 100,
-        minutesLeft: remainingSlices, // 1 min per slice by contract
+        minutesLeft: Math.max(1, Math.round(remainingSlices * minsPerSlice)),
       };
     });
   }, [inProgressQuery.data]);
@@ -176,7 +179,9 @@ export default function HomeScreen() {
   useFocusEffect(
     useCallback(() => {
       meQuery.refetch();
-    }, [meQuery])
+      feedQuery.refetch();
+      inProgressQuery.refetch();
+    }, [meQuery, feedQuery, inProgressQuery])
   );
 
   const greeting = useMemo(() => {
@@ -192,6 +197,9 @@ export default function HomeScreen() {
   const name = displayName(meQuery.data);
   const items = feedQuery.data ?? [];
   const streakData = streakQuery.data as { current_streak: number } | undefined;
+
+  const meError = meQuery.isError;
+  const inProgressError = inProgressQuery.isError;
 
   return (
     <SafeAreaView edges={['top']} style={[styles.root, { backgroundColor: tokens.paper }]}>
@@ -221,6 +229,21 @@ export default function HomeScreen() {
             </Text>
           </View>
 
+          {meError && (
+            <View style={[styles.stateBlock, { borderColor: tokens.signal }]}>
+              <Ionicons name="cloud-offline-outline" size={20} color={tokens.signal} />
+              <Text style={[styles.stateText, { color: tokens.signal }]}>
+                {t('home.feed_error')}
+              </Text>
+              <TouchableOpacity
+                onPress={() => meQuery.refetch()}
+                style={[styles.retry, { borderColor: tokens.signal }]}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.retryText, { color: tokens.signal }]}>{t('home.try_again')}</Text>
+              </TouchableOpacity>
+            </View>
+          )}
           {streakData && streakData.current_streak > 0 && (
             <View style={[styles.streakBadge, { backgroundColor: tokens.mintSoft, borderColor: tokens.mint }]}>
               <Text style={styles.streakEmoji}>🔥</Text>
@@ -255,18 +278,44 @@ export default function HomeScreen() {
           <PageMark />
         </View>
 
-        {/* Resume slot */}
-        {resumes.length > 0 ? (
+         {/* Resume slot */}
+        {inProgressQuery.isLoading ? (
           <View style={styles.section}>
             <Text
               style={[styles.sectionTitle, { color: tokens.ink, fontFamily: 'SpaceGrotesk_700Bold' }]}
             >
               {t('home.keep_reading')}
             </Text>
-            {/* Horizontal carousel — swipe through in-progress books. The
-                first card is anchored to the screen edge so it's clear
-                that there's more to scroll; padding-right gives the last
-                card breathing room from the edge. */}
+            <View style={{ height: 140 }} />
+          </View>
+        ) : inProgressQuery.isError ? (
+          <View style={styles.section}>
+            <Text
+              style={[styles.sectionTitle, { color: tokens.ink, fontFamily: 'SpaceGrotesk_700Bold' }]}
+            >
+              {t('home.keep_reading')}
+            </Text>
+            <View style={[styles.stateBlock, { borderColor: tokens.signal }]}>
+              <Ionicons name="cloud-offline-outline" size={20} color={tokens.signal} />
+              <Text style={[styles.stateText, { color: tokens.signal }]}>
+                {t('home.feed_error')}
+              </Text>
+              <TouchableOpacity
+                onPress={() => inProgressQuery.refetch()}
+                style={[styles.retry, { borderColor: tokens.signal }]}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.retryText, { color: tokens.signal }]}>{t('home.try_again')}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : resumes.length > 0 ? (
+          <View style={styles.section}>
+            <Text
+              style={[styles.sectionTitle, { color: tokens.ink, fontFamily: 'SpaceGrotesk_700Bold' }]}
+            >
+              {t('home.keep_reading')}
+            </Text>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -282,11 +331,6 @@ export default function HomeScreen() {
                   author={r.author}
                   progress={r.progress}
                   minutesLeft={r.minutesLeft}
-                  // Tap deep-links to the exact slice the user was on.
-                  // v3 §4.1: "Continue reading" should open directly to
-                  // the user's last-read unit, not the book detail. If
-                  // the backend didn't return a slice id (legacy row),
-                  // fall back to the book detail screen.
                   onPress={() =>
                     router.push(
                       r.sliceId
@@ -298,7 +342,20 @@ export default function HomeScreen() {
               ))}
             </ScrollView>
           </View>
-        ) : null}
+        ) : (
+          <View style={styles.section}>
+            <Text
+              style={[styles.sectionTitle, { color: tokens.ink, fontFamily: 'SpaceGrotesk_700Bold' }]}
+            >
+              {t('home.keep_reading')}
+            </Text>
+            <View style={[styles.stateBlock, { borderColor: tokens.border }]}>
+              <Text style={[styles.stateText, { color: tokens.inkMuted }]}>
+                {t('home.empty_feed')}
+              </Text>
+            </View>
+          </View>
+        )}
 
         {/* Browse by category */}
         <View style={styles.section}>

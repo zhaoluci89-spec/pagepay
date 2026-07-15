@@ -623,7 +623,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 8,
     gap: 8,
-    paddingLeft: 16,
   },
   levelPill: {
     flexDirection: 'row',
@@ -647,7 +646,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   levelCell: {
-    flexBasis: '18%',
+    flex: 1,
     minWidth: 64,
     borderWidth: 1,
     borderRadius: 12,

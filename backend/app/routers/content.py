@@ -428,7 +428,7 @@ async def get_content_filters(db: AsyncSession = Depends(get_db)):
     the catalog query plan simple.
     """
     # DISTINCT values for each axis. We use a SELECT DISTINCT col
-    # pattern; PostgreSQL/MySQL both optimize this to a loose index
+     # pattern; PostgreSQL optimizes this to a loose index
     # scan when the column is indexed.
     levels_rows = await db.execute(
         select(ContentCatalog.education_level)
@@ -469,7 +469,8 @@ async def continue_reading(
         select(ReadingProgress)
         .where(ReadingProgress.user_id == current_user.id)
         .where(ReadingProgress.is_finished == False)  # noqa: E712
-        # MySQL doesn't support `NULLS LAST` — emulate with two sort keys.
+        # PostgreSQL supports NULLS LAST natively; kept as two-key sort
+        # for cross-DB compatibility if needed in the future.
         # Rows with `last_read_at IS NULL` sort to the end because `1 > 0`,
         # then the secondary `desc()` puts the most recent timestamp first.
         .order_by(ReadingProgress.last_read_at.is_(None).asc(), ReadingProgress.last_read_at.desc())

@@ -192,9 +192,6 @@ export default function StudyChatScreen() {
                       </View>
                     </View>
                   )}
-                  {streaming && msg.role === 'assistant' && msg.text === '' && (
-                    <ActivityIndicator size="small" color={tokens.mint} style={{ marginTop: 8 }} />
-                  )}
                 </Text>
               </View>
             </View>
@@ -327,6 +324,6 @@ const styles = StyleSheet.create({
   shimmerBar: {
     height: 12,
     borderRadius: 6,
-    backgroundColor: '#ccc',
+    backgroundColor: tokens.border,
   },
 });

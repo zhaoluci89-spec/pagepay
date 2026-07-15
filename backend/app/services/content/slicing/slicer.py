@@ -56,7 +56,7 @@ NO_SLICE_THRESHOLD_CHARS = 3_600
 # leaving tiny trailing slices when no boundary falls near the target.
 MAX_CHARS_PER_SLICE = int(TARGET_CHARS_PER_SLICE * 1.30)
 
-# Hard cap. Protects the TEXT column (65,535-byte cap on MySQL). If a
+# Hard cap. Protects the TEXT column from unbounded growth. If a
 # paragraph is longer than this, we hard-cut inside it because boundary
 # snapping could not find a break.
 ABSOLUTE_MAX_CHARS = 6_000
@@ -324,7 +324,7 @@ def split_into_slices(text: str, target_chars: int = TARGET_CHARS_PER_SLICE) -> 
                 cut = cut_t
             else:
                 cut = cursor + MAX_CHARS_PER_SLICE
-        # Absolute ceiling — protects MySQL TEXT column. If we still
+        # Absolute ceiling — protects the TEXT column from unbounded growth. If we still
         # overshot (pathologically long sentence-less paragraph), force.
         if cut - cursor > ABSOLUTE_MAX_CHARS:
             cut = cursor + ABSOLUTE_MAX_CHARS

@@ -129,6 +129,13 @@ export function McqQuestion({
     return tokens.border;
   });
 
+  const badgeTextColor = (idx: number) =>
+    optionColors[idx] === tokens.mint
+      ? tokens.mintText
+      : optionColors[idx] === tokens.signal
+        ? '#fff'
+        : tokens.inkMuted;
+
   const cardAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: cardScale.value }],
   }));
@@ -138,7 +145,7 @@ export function McqQuestion({
     transform: [{ translateY: explanationTranslateY.value }],
   }));
 
-  const confettiColors = [tokens.mint, tokens.mintSoft, '#34C39B', '#E6F1ED'];
+  const confettiColors = [tokens.mint, tokens.mintSoft];
 
   return (
     <Animated.View style={[styles.card, { backgroundColor: tokens.card, borderColor: tokens.border }, cardAnimatedStyle]}>
@@ -227,7 +234,7 @@ export function McqQuestion({
               ]}
             >
               <View style={[styles.badge, { backgroundColor: optionColors[idx] }]}>
-                <Text style={styles.badgeText}>{String.fromCharCode(65 + idx)}</Text>
+                <Text style={[styles.badgeText, { color: badgeTextColor(idx) }]}>{String.fromCharCode(65 + idx)}</Text>
               </View>
               <Text style={[styles.optionText, { color: tokens.ink }]}>{opt}</Text>
               {showAnswer && idx === correct_index && (

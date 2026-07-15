@@ -27,16 +27,8 @@ export function PrimaryButton({
   const tokens = PagePay[scheme];
 
   const isInert = loading || disabled;
-  const bg = isInert
-    ? scheme === 'light'
-      ? '#C9D6D2' // soft mint-tinted grey when disabled in light mode
-      : '#2A3A35'
-    : tokens.mint;
-  const fg = isInert
-    ? scheme === 'light'
-      ? '#FFFFFF'
-      : tokens.inkMuted
-    : tokens.mintText;
+  const bg = isInert ? tokens.border : tokens.mint;
+  const fg = isInert ? tokens.inkMuted : tokens.mintText;
 
   return (
     <Pressable

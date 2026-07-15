@@ -54,16 +54,6 @@ export default function SrsDashboardScreen() {
     loadData();
   }, [loadData]);
 
-  const statsQ = useQuery({
-    queryKey: ['srs', 'stats'],
-    queryFn: async () => {
-      const res = await apiFetch('/api/v1/study/srs/stats');
-      if (!res.ok) throw new Error('Failed to load stats');
-      return res.json() as Promise<SRSStats>;
-    },
-    enabled: false,
-  });
-
   const renderCard = ({ item }: { item: SRSCard }) => {
     const boxColor = item.box >= 4 ? tokens.mint : item.box >= 2 ? tokens.inkMuted : tokens.signal;
     return (
@@ -96,7 +86,10 @@ export default function SrsDashboardScreen() {
         </View>
 
         {loading ? (
-          <ActivityIndicator size="small" color={tokens.mint} style={{ marginTop: 32 }} />
+          <View style={{ marginTop: 32, alignItems: 'center', gap: 12 }}>
+            <ActivityIndicator size="small" color={tokens.mint} />
+            <Text style={[styles.loadingLabel, { color: tokens.inkMuted }]}>Loading review data…</Text>
+          </View>
         ) : (
           <>
             <View style={styles.statsRow}>
@@ -228,5 +221,8 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 14,
     textAlign: 'center',
+  },
+  loadingLabel: {
+    fontSize: 13,
   },
 });

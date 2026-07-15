@@ -73,6 +73,7 @@ export function Flashcard({ front, back, assetId, cardIndex, onReviewed }: Flash
         accessibilityRole="button"
         accessibilityLabel={flipped ? 'Show front' : 'Show back'}
         disabled={reviewed}
+        accessibilityState={{ disabled: reviewed }}
       >
         <View style={[styles.card, { backgroundColor: tokens.card, borderColor: tokens.border }]}>
           <Animated.View style={[styles.cardFace, frontAnimatedStyle]}>

@@ -70,7 +70,9 @@ export async function publicApiFetch(path: string, options: RequestInit = {}): P
       headers,
     });
   } catch (e) {
-    console.error(`[publicApiFetch] network error: ${API_URL}${path}`, e);
+    if (__DEV__) {
+      console.error(`[publicApiFetch] network error: ${API_URL}${path}`, e);
+    }
     throw new Error(
       `Can't reach the server at ${API_URL}. Check your connection and try again.`,
     );
@@ -93,7 +95,9 @@ export async function apiFetch(path: string, options: RequestInit = {}): Promise
       headers,
     });
   } catch (e) {
-    console.error(`[apiFetch] network error: ${API_URL}${path}`, e);
+    if (__DEV__) {
+      console.error(`[apiFetch] network error: ${API_URL}${path}`, e);
+    }
     throw new Error(
       `Can't reach the server at ${API_URL}. Check your connection and try again.`,
     );

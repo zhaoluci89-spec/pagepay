@@ -97,20 +97,20 @@ export const Fonts = Platform.select({
     /** iOS `UIFontDescriptorSystemDesignMonospaced` */
     mono: 'ui-monospace',
     /** Brand display face — Space Grotesk loaded via expo-font. */
-    display: 'SpaceGrotesk_700Bold',
+    display: 'Inter_700Bold',
   },
   default: {
     sans: 'normal',
     serif: 'serif',
     rounded: 'normal',
     mono: 'monospace',
-    display: 'SpaceGrotesk_700Bold',
+    display: 'Inter_700Bold',
   },
   web: {
     sans: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
     serif: "Georgia, 'Times New Roman', serif",
     rounded: "'SF Pro Rounded', 'Hiragino Maru Gothic ProN', Meiryo, 'MS PGothic', sans-serif",
     mono: "SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
-    display: "'Space Grotesk', system-ui, sans-serif",
+    display: "'Inter', system-ui, sans-serif",
   },
 });

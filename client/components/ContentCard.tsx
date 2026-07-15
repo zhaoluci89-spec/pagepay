@@ -85,7 +85,7 @@ export function ContentCard({ item, onPress }: ContentCardProps) {
         },
       ]}
     >
-      <View style={[styles.band, { backgroundColor: bandColor }]}>
+      <View style={[styles.band, { backgroundColor: bandColor, height: item.is_sponsored ? 16 : 6 }]}>
         {item.is_sponsored ? (
           <Text style={[styles.sponsoredLabel, { color: tokens.signal }]}>
             • Sponsored
@@ -150,8 +150,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
     fontWeight: '700',
     textTransform: 'uppercase',
-    position: 'absolute',
-    top: 10,
     right: 12,
   },
   body: {

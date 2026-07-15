@@ -306,20 +306,22 @@ export default function WalletScreen() {
                 <SkeletonBalanceCard />
               ) : (
                 <>
-                  <Text
-                    style={{
-                      fontFamily: Fonts.display,
-                      fontSize: 48,
-                      color: c.ink,
-                      letterSpacing: -1.2,
-                      lineHeight: 52,
-                    }}
-                  >
-                    {formatPoints(balance)}
-                    <Text style={{ fontSize: 18, color: c.inkMuted, fontFamily: undefined }}>
-                      {' '}{t('wallet.points_suffix')}
+                  <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
+                    <Text
+                      style={{
+                        fontFamily: Fonts.display,
+                        fontSize: 48,
+                        color: c.ink,
+                        letterSpacing: -1.2,
+                        lineHeight: 52,
+                      }}
+                    >
+                      {formatPoints(balance)}
                     </Text>
-                  </Text>
+                    <Text style={{ fontSize: 18, color: c.inkMuted, fontFamily: undefined, marginLeft: 4 }}>
+                      {t('wallet.points_suffix')}
+                    </Text>
+                  </View>
                   <Text style={{ fontSize: 13, color: c.inkMuted, marginTop: 4 }}>
                     {t('wallet.approx')} {formatKobo(balance)}
                   </Text>
@@ -335,27 +337,14 @@ export default function WalletScreen() {
               ) : (
                 <View style={{ gap: 10 }}>
                   {/* Fund Wallet Button */}
-                  <TouchableOpacity
+                  <PrimaryButton
+                    title={t('wallet.fund_wallet')}
                     onPress={() => router.push('/fund-wallet')}
-                    style={{
-                      backgroundColor: c.mint,
-                      borderRadius: 14,
-                      padding: 16,
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 8,
-                    }}
-                  >
-                    <Ionicons name="add-circle-outline" size={20} color={c.mintText} />
-                    <Text style={{ fontSize: 16, fontWeight: '700', color: c.mintText, fontFamily: Fonts.display }}>
-                      {t('wallet.fund_wallet')}
-                    </Text>
-                  </TouchableOpacity>
+                  />
 
                   {/* Withdraw Button */}
                   {belowMin ? (
-                    <>
+                    <View style={{ gap: 4 }}>
                       <PrimaryButton
                         title={t('wallet.withdraw')}
                         onPress={handleWithdrawPress}
@@ -365,13 +354,12 @@ export default function WalletScreen() {
                         style={{
                           fontSize: 12,
                           color: c.inkMuted,
-                          marginTop: -4,
                           textAlign: 'center',
                         }}
                       >
                         {t('wallet.min_withdraw')}
                       </Text>
-                    </>
+                    </View>
                   ) : (
                     <PrimaryButton title={t('wallet.withdraw')} onPress={handleWithdrawPress} />
                   )}
@@ -394,36 +382,36 @@ export default function WalletScreen() {
               <Text style={{ fontSize: 12, color: c.inkMuted, marginTop: 2, marginBottom: 12 }}>
                 {t('wallet.pay_bills_subtitle')}
               </Text>
-              <View style={{ flexDirection: 'row', gap: 10 }}>
-                <BillsService
-                  icon="phone-portrait-outline"
-                   label={t('wallet.services.airtime')}
-                   earn="3%"
-                   color={c}
-                   onPress={() => router.push('/buy-airtime')}
-                 />
-                 <BillsService
-                   icon="wifi-outline"
-                   label={t('wallet.services.data')}
-                   earn="4%"
-                   color={c}
-                   onPress={() => router.push('/buy-data')}
-                 />
-                 <BillsService
-                   icon="flash-outline"
-                   label={t('wallet.services.electricity')}
-                   earn="1%"
-                   color={c}
-                   onPress={() => router.push('/buy-electricity')}
-                 />
-                 <BillsService
-                   icon="tv-outline"
-                   label={t('wallet.services.tv')}
-                   earn="1.5%"
-                   color={c}
-                   onPress={() => router.push('/buy-tv')}
-                 />
-               </View>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+                  <BillsService
+                    icon="phone-portrait-outline"
+                    label={t('wallet.services.airtime')}
+                    earn="3%"
+                    color={c}
+                    onPress={() => router.push('/buy-airtime')}
+                  />
+                  <BillsService
+                    icon="wifi-outline"
+                    label={t('wallet.services.data')}
+                    earn="4%"
+                    color={c}
+                    onPress={() => router.push('/buy-data')}
+                  />
+                  <BillsService
+                    icon="flash-outline"
+                    label={t('wallet.services.electricity')}
+                    earn="1%"
+                    color={c}
+                    onPress={() => router.push('/buy-electricity')}
+                  />
+                  <BillsService
+                    icon="tv-outline"
+                    label={t('wallet.services.tv')}
+                    earn="1.5%"
+                    color={c}
+                    onPress={() => router.push('/buy-tv')}
+                  />
+                </View>
              </View>
 
             {/* Section title */}
@@ -536,11 +524,7 @@ function SessionRow({
   tokens: (typeof PagePay)['light'];
 }) {
   const { t } = useTranslation();
-  
-  // Only show the "Pending" badge when there's actually something to
-  // claim. Zero-point "pending" rows mean the session was verified but
-  // earned nothing (anti-cheat filtered it) — surfacing those as
-  // "Pending" misleads the user into thinking there's points to claim.
+
   const showPending = item.type === 'pending' && item.points > 0;
   const isEarn = item.type === 'earn';
 
@@ -551,6 +535,20 @@ function SessionRow({
         { backgroundColor: tokens.card, borderColor: tokens.border },
       ]}
     >
+      <View
+        style={[
+          rowStyles.icon,
+          {
+            backgroundColor: tokens.mintSoft,
+          },
+        ]}
+      >
+        <Ionicons
+          name="book-outline"
+          size={16}
+          color={tokens.mint}
+        />
+      </View>
       <View style={{ flex: 1, marginRight: 12 }}>
         <Text
           style={{ fontSize: 14, fontWeight: '500', color: tokens.ink, marginBottom: 2 }}
@@ -565,8 +563,6 @@ function SessionRow({
           style={{
             fontSize: 15,
             fontWeight: '600',
-            // Zero-point informational rows are dimmed rather than colored
-            // — they're not actionable so they shouldn't read as warnings.
             color: showPending
               ? tokens.signal
               : isEarn

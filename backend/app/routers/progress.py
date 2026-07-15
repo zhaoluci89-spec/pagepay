@@ -86,9 +86,8 @@ async def get_continue_reading(
         select(ReadingProgress)
         .where(ReadingProgress.user_id == current_user.id)
         .where(ReadingProgress.is_finished == False)  # noqa: E712
-        # MySQL doesn't support `NULLS LAST`. Two keys emulate it: NULLs
-        # sort to the bottom (`is_(None)` is `1 > 0`), then we sort the
-        # non-NULL timestamps newest-first.
+        # PostgreSQL supports NULLS LAST natively; kept as two-key sort
+        # for cross-DB compatibility if needed in the future.
         .order_by(ReadingProgress.last_read_at.is_(None).asc(), ReadingProgress.last_read_at.desc())
         .limit(1)
     )
@@ -189,6 +188,7 @@ async def list_in_progress(
         select(ReadingProgress, ContentCatalog.title)
         .join(ContentCatalog, ContentCatalog.id == ReadingProgress.work_id)
         .where(ReadingProgress.user_id == current_user.id)
+        .where(ReadingProgress.is_finished == False)  # noqa: E712
         .order_by(ReadingProgress.last_read_at.is_(None).asc(), ReadingProgress.last_read_at.desc())
     )
     out: list[WorkProgress] = []

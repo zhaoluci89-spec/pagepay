@@ -1,6 +1,6 @@
 # Backend Engineer Agent
 **Project:** PagePay — Read-to-Earn & AI Study Platform
-**Stack:** Python 3.11+, FastAPI, MySQL 8.0 (local dev), PostgreSQL 18 (production on Render), SQLAlchemy 2.0 async, Alembic, Gunicorn + Uvicorn
+**Stack:** Python 3.11+, FastAPI, PostgreSQL 18 (local Docker and production on Render), SQLAlchemy 2.0 async, Alembic, Gunicorn + Uvicorn
 
 ---
 
@@ -10,8 +10,8 @@ Build, maintain, and evolve the PagePay backend API. Own database schema, API co
 ## Core Responsibilities
 
 ### 1. Database Layer
-- **Database:** PostgreSQL 18 on Render.app (production); MySQL 8.0 in local Docker via `docker-compose.yml`
-- Use `asyncpg` driver with SQLAlchemy 2.0 async engine for Postgres; use `aiomysql` for local MySQL dev
+- **Database:** PostgreSQL 18 (local Docker via `docker-compose.yml` and production on Render.app)
+- Use `asyncpg` driver with SQLAlchemy 2.0 async engine for PostgreSQL
 - All models inherit from `DeclarativeBase`
 - Use `Mapped` and `mapped_column` for typing (never raw `Column` without type)
 - Use `AsyncSession` injected via FastAPI `Depends(get_db)`
@@ -37,10 +37,9 @@ Build, maintain, and evolve the PagePay backend API. Own database schema, API co
 - Rate limit login: 5 attempts per 15 minutes per IP
 
 ### 4. Reading Engine
-- Timer logic: client sends heartbeat every 10s
-- Server pauses timer when `app_state == "background"`; resumes on foreground
+- Timer logic: server tracks slice start/end timestamps; client reads remaining time from `/progress/continue`
 - Points formula: `base_points = max(0, (effective_duration // 600) * 5)` — uses floor division as implemented in `sessions.py:144`
-- Anti-cheat: calls `run_fraud_checks_on_session`; flag users with >3 paused sessions in a row for admin review
+- Anti-cheat: server-side only — validate dwell time >= 60s per slice before awarding points; flag users with >3 suspicious sessions for admin review
 
 ### 5. AI Router
 - Single endpoint: `POST /api/v1/ai/route`
@@ -111,7 +110,7 @@ Build, maintain, and evolve the PagePay backend API. Own database schema, API co
 
 ### 9. Testing Requirements
 - Unit tests with `pytest` + `httpx.AsyncClient` (test FastAPI routes)
-- Database tests: use MySQL test container for local dev; production uses PostgreSQL 18 on Render
+- Database tests: use PostgreSQL test container for local dev; production uses PostgreSQL 18 on Render
 - Mock external APIs (AI providers, ad webhooks, Paystack, Peyflex)
 - Coverage target: 80%+ for critical paths (auth, payments, bills, reading engine)
 - Never test against production AI providers (use sandbox keys or mock)
@@ -119,7 +118,7 @@ Build, maintain, and evolve the PagePay backend API. Own database schema, API co
 
 ### 10. Docker & Deployment
 - `Dockerfile`: single-stage build using `python:3.11` (not multi-stage as originally spec'd)
-- `docker-compose.yml` for local dev: FastAPI + MySQL 8.0
+- `docker-compose.yml` for local dev: FastAPI + PostgreSQL 18
 - Production: deployed on Render.app with PostgreSQL 18 (NOT Docker in production)
 - Health check: `/api/v1/health` returns 200 if DB reachable
 - Gunicorn + Uvicorn workers: `CMD ["gunicorn", "app.main:app", "-w", "2", "-k", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:8000", "--timeout", "120", "--graceful-timeout", "30", "--keep-alive", "5"]`
@@ -157,7 +156,7 @@ Build, maintain, and evolve the PagePay backend API. Own database schema, API co
 - **Test before merge:**
   1. `pytest tests/ --cov=app --cov-report=term` — 80%+ coverage, 0 failures
   2. `docker compose up --build` — backend boots, `/api/v1/health` returns 200
-  3. E2E smoke: auth → create content → start session → heartbeat → end → wallet updates
+   3. E2E smoke: auth → create content → start session → end → wallet updates
   4. Bills smoke: deposit wallet → buy airtime → verify commission credited
 - **Production mindset:** Every line of code is revenue-affecting. A bug in point calculation is a lawsuit. A bug in ad verification is a banned account. A bug in bill purchase loses user money. Write code as if you are handing it to a regulatory auditor.
 - **Real-time validation:** All meter/smartcard numbers validated via Paystack before purchase. Phone network detected from Nigerian prefixes.

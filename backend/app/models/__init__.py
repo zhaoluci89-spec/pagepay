@@ -1351,8 +1351,8 @@ class WorkComment(Base):
       - 'rejected' — hidden by moderator
 
     `body` is TEXT with a 1-2000 char check at the application layer.
-    The DB-level CHECK is intentionally absent because MySQL's behavior
-    with CHECK constraints is unreliable; we enforce in the router.
+    The DB-level CHECK is enforced at the application layer for
+    portability across database backends.
     """
 
     __tablename__ = "work_comments"

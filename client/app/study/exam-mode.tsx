@@ -20,6 +20,7 @@ import { useTranslation } from 'react-i18next';
 import { apiFetch } from '@/src/shared/api/client';
 import { PagePay } from '@/constants/theme';
 import { useEffectiveScheme } from '@/src/shared/hooks/use-effective-scheme';
+import { PrimaryButton } from '@/components/PrimaryButton';
 
 type ExamType = 'jamb' | 'waec' | 'neco' | 'nabteb' | 'custom' | null;
 
@@ -64,6 +65,8 @@ export default function ExamModeScreen() {
   const [timeLeft, setTimeLeft] = useState(0);
   const [score, setScore] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [retryAction, setRetryAction] = useState<(() => void) | null>(null);
 
   const materialsQ = useQuery({
     queryKey: ['study', 'materials', selectedExamType],
@@ -147,7 +150,8 @@ export default function ExamModeScreen() {
       setExamState('active');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to start exam';
-      alert(message);
+      setError(message);
+      setRetryAction(() => () => handleStartExam());
     } finally {
       setSubmitting(false);
     }
@@ -187,14 +191,17 @@ export default function ExamModeScreen() {
     setScore(null);
   };
 
-  const currentQuestion = questions[currentQuestionIndex];
-  const progress = questions.length > 0 ? ((currentQuestionIndex + 1) / questions.length) * 100 : 0;
+  const currentQuestion = useMemo(() => questions[currentQuestionIndex], [questions, currentQuestionIndex]);
+  const progress = useMemo(
+    () => (questions.length > 0 ? ((currentQuestionIndex + 1) / questions.length) * 100 : 0),
+    [questions.length, currentQuestionIndex]
+  );
 
   if (examState === 'active' && currentQuestion) {
     return (
       <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: tokens.paper }}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={handleSubmitExam} style={styles.exitBtn}>
+          <TouchableOpacity onPress={handleSubmitExam} style={styles.exitBtn} accessibilityLabel="Exit exam">
             <Ionicons name="close" size={22} color={tokens.signal} />
           </TouchableOpacity>
           <View style={styles.timerContainer}>
@@ -249,6 +256,7 @@ export default function ExamModeScreen() {
             onPress={() => setCurrentQuestionIndex((prev) => Math.max(0, prev - 1))}
             disabled={currentQuestionIndex === 0}
             style={[styles.navBtn, { borderColor: tokens.border }]}
+            accessibilityState={{ disabled: currentQuestionIndex === 0 }}
           >
             <Ionicons name="chevron-back" size={20} color={tokens.inkMuted} />
             <Text style={[styles.navBtnText, { color: tokens.inkMuted }]}>Previous</Text>
@@ -311,9 +319,10 @@ export default function ExamModeScreen() {
             </View>
           </View>
 
-          <TouchableOpacity onPress={handleRestart} style={[styles.primaryBtn, { backgroundColor: tokens.mint }]}>
-            <Text style={[styles.primaryBtnText, { color: '#fff' }]}>Back to Exam Setup</Text>
-          </TouchableOpacity>
+          <PrimaryButton
+            title="Back to Exam Setup"
+            onPress={handleRestart}
+          />
         </View>
       </SafeAreaView>
     );
@@ -332,6 +341,38 @@ export default function ExamModeScreen() {
         <Text style={[styles.subtitle, { color: tokens.inkMuted }]}>
           Select your exam type and material to start a timed mock test.
         </Text>
+
+        {error && (
+          <View
+            style={[styles.errorBanner, { backgroundColor: tokens.signalSoft, borderColor: tokens.signal }]}
+            accessibilityRole="alert"
+            accessibilityLabel={`Error: ${error}`}
+          >
+            <Ionicons name="alert-circle-outline" size={18} color={tokens.signal} accessibilityLabel="" />
+            <Text style={[styles.errorText, { color: tokens.signal }]}>{error}</Text>
+            {retryAction && (
+              <TouchableOpacity
+                onPress={() => {
+                  setError(null);
+                  retryAction();
+                }}
+                style={[styles.retryBtn, { backgroundColor: tokens.signal }]}
+                accessibilityRole="button"
+                accessibilityLabel="Retry"
+              >
+                <Text style={styles.retryText}>Retry</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              onPress={() => { setError(null); setRetryAction(null); }}
+              hitSlop={6}
+              accessibilityRole="button"
+              accessibilityLabel="Dismiss"
+            >
+              <Ionicons name="close" size={16} color={tokens.signal} accessibilityLabel="" />
+            </TouchableOpacity>
+          </View>
+        )}
 
         <Text style={[styles.sectionLabel, { color: tokens.ink }]}>Exam Type</Text>
         <View style={styles.examTypeGrid}>
@@ -388,29 +429,22 @@ export default function ExamModeScreen() {
                 ))}
               </View>
             ) : (
-              <Text style={[styles.emptyText, { color: tokens.inkMuted }]}>
-                No materials found for this exam type. Upload one first!
-              </Text>
+              <View style={[styles.emptyState, { borderColor: tokens.border }]}>
+                <Ionicons name="school-outline" size={28} color={tokens.inkMuted} />
+                <Text style={[styles.emptyText, { color: tokens.inkMuted }]}>
+                  No materials found for this exam type. Upload one first!
+                </Text>
+              </View>
             )}
           </>
         )}
 
-        <TouchableOpacity
+        <PrimaryButton
+          title="Start Exam"
           onPress={handleStartExam}
+          loading={submitting}
           disabled={!selectedExamType || !selectedMaterialId || submitting}
-          style={[
-            styles.primaryBtn,
-            {
-              backgroundColor: (!selectedExamType || !selectedMaterialId || submitting) ? tokens.border : tokens.mint,
-            },
-          ]}
-        >
-          {submitting ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <Text style={[styles.primaryBtnText, { color: '#fff' }]}>Start Exam</Text>
-          )}
-        </TouchableOpacity>
+        />
       </ScrollView>
     </SafeAreaView>
   );
@@ -491,6 +525,42 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 13,
     marginBottom: 24,
+    textAlign: 'center',
+  },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 12,
+    marginBottom: 16,
+  },
+  errorText: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  retryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    marginRight: 4,
+  },
+  retryText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  emptyState: {
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingVertical: 32,
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 24,
   },
   primaryBtn: {
     borderRadius: 14,
@@ -518,7 +588,7 @@ const styles = StyleSheet.create({
   },
   progressBarContainer: {
     height: 4,
-    backgroundColor: '#e5e7eb',
+    backgroundColor: tokens.border,
     borderRadius: 2,
     marginHorizontal: 16,
     marginBottom: 16,

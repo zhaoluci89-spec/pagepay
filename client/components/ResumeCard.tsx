@@ -97,7 +97,7 @@ export function ResumeCard({ title, author, progress, minutesLeft, onPress }: Re
         <Text style={[styles.progress, { color: tokens.mintText }]}>
           {pct}% · {minutesLeft} min left
         </Text>
-        <View style={styles.resumeCta}>
+        <View style={[styles.resumeCta, { backgroundColor: tokens.mintText }]}>
           <Text
             style={[
               styles.resumeCtaText,
@@ -178,7 +178,6 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingHorizontal: 12,
     paddingVertical: 6,
-    backgroundColor: '#FFFFFF',
     borderRadius: 999,
   },
   resumeCtaText: {

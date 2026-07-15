@@ -98,9 +98,8 @@ _BAD_TERMINATORS = ("...", "…", "")
 def _sanitize_comment_body(body: str) -> str:
     """Strip HTML, normalize whitespace, cap length.
 
-    The DB-level CHECK on `body` is intentionally absent (MySQL is
-    unreliable with CHECK constraints), so we enforce 1-2000 chars
-    here at the application layer.
+    The DB-level CHECK on `body` is enforced at the application layer
+    for portability across database backends.
 
     We escape `<`, `>`, `&`, `"` to their HTML entity equivalents
     rather than stripping them, so a comment like "use <stdio.h>"

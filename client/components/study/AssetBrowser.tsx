@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { StyleSheet, Pressable, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInDown, FadeOutDown } from 'react-native-reanimated';
@@ -109,7 +109,7 @@ export function AssetBrowser({ assets, userBalance, onUnlock, unlockedAssets, on
     }
   };
 
-  const sections: AccordionSection[] = [
+  const sections: AccordionSection[] = useMemo(() => [
     {
       type: 'mcq',
       label: 'MCQs',
@@ -128,15 +128,22 @@ export function AssetBrowser({ assets, userBalance, onUnlock, unlockedAssets, on
       icon: 'document-text-outline',
       assets: assets.filter((a) => a.type === 'essay'),
     },
-  ];
+  ], [assets]);
 
   const toggleExpand = (type: string) => {
     setExpanded((prev) => (prev === type ? null : type));
   };
 
   const handleUnlock = async (asset: AssetInfo, method: 'points' | 'ad') => {
-    await onUnlock(asset.id, method);
-    // After unlock, the parent should refetch material to get content
+    try {
+      await onUnlock(asset.id, method);
+    } catch (error) {
+      if (__DEV__) {
+        console.error('[AssetBrowser] Unlock failed:', error);
+      }
+      // Don't close modal on error — let the caller / parent handle it
+      throw error;
+    }
     setPendingUnlock(null);
   };
 

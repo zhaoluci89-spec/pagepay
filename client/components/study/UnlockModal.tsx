@@ -101,7 +101,7 @@ export function UnlockModal({
   const { data: adConfig } = useQuery({
     queryKey: ['ads-config'],
     queryFn: async () => {
-      const res = await apiFetch('/api/v1/config/ads?env=dev');
+      const res = await apiFetch(`/api/v1/config/ads?env=${__DEV__ ? 'dev' : 'prod'}`);
       if (!res.ok) return {};
       return (await res.json()) as Record<string, string>;
     },
@@ -239,7 +239,7 @@ export function UnlockModal({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.55)',
+    backgroundColor: scheme === 'dark' ? 'rgba(0,0,0,0.7)' : 'rgba(0,0,0,0.55)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24,

@@ -18,6 +18,9 @@ import { PrimaryButton } from '@/components/PrimaryButton';
 import { SkeletonPage } from '@/components/skeletons';
 import { Skeleton } from '@/components/Skeleton';
 import { cacheAsset, getCachedAsset } from '@/src/features/study/storage';
+import { saveLastRoute, getLastRoute } from '@/src/shared/lib/screen-memory';
+
+const STUDY_ROUTE_MEMORY_KEY = 'pagepay_study_selected_material';
 
 // Error categorization helper
 function categorizeError(message: string, operation: string, t: (key: string, params?: Record<string, unknown>) => string): string {
@@ -92,6 +95,28 @@ export default function StudyScreen() {
     };
   }, [selectedMaterial]);
 
+  // Restore last selected material on mount
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const saved = await getLastRoute();
+      if (saved && saved.startsWith('/study/materials/')) {
+        const id = Number(saved.split('/').pop());
+        if (!cancelled && !isNaN(id)) {
+          handleMaterialPress(id);
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Persist selected material to route memory
+  useEffect(() => {
+    if (selectedMaterialId) {
+      saveLastRoute(`/study/materials/${selectedMaterialId}`);
+    }
+  }, [selectedMaterialId]);
+
   const loadCachedAssets = async (materialId: number) => {
     try {
       if (!selectedMaterial) return;
@@ -105,7 +130,7 @@ export default function StudyScreen() {
         }
       }
     } catch (error) {
-      console.error('Failed to load cached assets:', error);
+      if (__DEV__) console.error('Failed to load cached assets:', error);
     }
   };
 
@@ -122,7 +147,7 @@ export default function StudyScreen() {
         setStudySessionId(data.session_id);
       }
     } catch (error) {
-      console.error('Failed to start study session:', error);
+      if (__DEV__) console.error('Failed to start study session:', error);
       // Don't throw - session tracking is optional
     }
   };
@@ -138,10 +163,9 @@ export default function StudyScreen() {
       if (res.ok) {
         const data = await res.json();
         setStudyDuration(data.duration_seconds);
-        // Could show a summary message: "Studied for X minutes"
       }
     } catch (error) {
-      console.error('Failed to end study session:', error);
+      if (__DEV__) console.error('Failed to end study session:', error);
     }
   };
 
@@ -384,7 +408,7 @@ export default function StudyScreen() {
         try {
           await cacheAsset(assetId, data.content, selectedMaterialId);
         } catch (error) {
-          console.error('Failed to cache unlocked asset:', error);
+          if (__DEV__) console.error('Failed to cache unlocked asset:', error);
           // Don't throw - caching is optional
         }
       }
@@ -585,9 +609,9 @@ export default function StudyScreen() {
               accessibilityRole="button"
               accessibilityLabel="Start exam mode"
             >
-              <Ionicons name="school-outline" size={20} color="#fff" />
-              <Text style={[styles.examModeBtnText, { color: '#fff' }]}>Exam Mode</Text>
-              <Ionicons name="chevron-forward" size={18} color="#fff" />
+              <Ionicons name="school-outline" size={20} color={tokens.mintText} />
+              <Text style={[styles.examModeBtnText, { color: tokens.mintText }]}>Exam Mode</Text>
+              <Ionicons name="chevron-forward" size={18} color={tokens.mintText} />
             </TouchableOpacity>
 
             <TouchableOpacity

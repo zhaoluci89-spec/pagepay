@@ -9,7 +9,6 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.dialects import mysql
 from sqlalchemy import text
 
 # revision identifiers, used by Alembic.
@@ -22,25 +21,21 @@ depends_on: Union[str, Sequence[str], None] = None
 def _table_exists(table_name: str) -> bool:
     """Check if a table exists in the current database."""
     conn = op.get_bind()
-    if conn.dialect.name == "mysql":
-        result = conn.execute(text(
-            "SELECT COUNT(*) FROM information_schema.tables "
-            "WHERE table_schema = DATABASE() AND table_name = :tname"
-        ), {"tname": table_name})
-        return result.scalar() > 0
-    return True
+    result = conn.execute(text(
+        "SELECT COUNT(*) FROM information_schema.tables "
+        "WHERE table_schema = 'public' AND table_name = :tname"
+    ), {"tname": table_name})
+    return result.scalar() > 0
 
 
 def _column_exists(table_name: str, column_name: str) -> bool:
     """Check if a column exists in a table."""
     conn = op.get_bind()
-    if conn.dialect.name == "mysql":
-        result = conn.execute(text(
-            "SELECT COUNT(*) FROM information_schema.columns "
-            "WHERE table_schema = DATABASE() AND table_name = :tname AND column_name = :cname"
-        ), {"tname": table_name, "cname": column_name})
-        return result.scalar() > 0
-    return True
+    result = conn.execute(text(
+        "SELECT COUNT(*) FROM information_schema.columns "
+        "WHERE table_schema = 'public' AND table_name = :tname AND column_name = :cname"
+    ), {"tname": table_name, "cname": column_name})
+    return result.scalar() > 0
 
 
 def upgrade() -> None:
