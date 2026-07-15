@@ -748,6 +748,7 @@ export default function ReaderScreen() {
         adUnit={adUnit}
         adUnitName={Platform.OS === 'android' ? 'rewarded_android' : 'rewarded_ios'}
         userId={user?.id ?? 0}
+        sessionId={sessionId}
         title={t('reader.ad_pre_title')}
         eyebrow={t('reader.ad_pre_eyebrow')}
         body={t('reader.ad_pre_body')}
@@ -771,6 +772,7 @@ export default function ReaderScreen() {
         adUnit={adUnit}
         adUnitName={Platform.OS === 'android' ? 'rewarded_android' : 'rewarded_ios'}
         userId={user?.id ?? 0}
+        sessionId={sessionId}
         title={t('reader.ad_post_title')}
         eyebrow={t('reader.ad_post_eyebrow')}
         body={t('reader.ad_post_body')}

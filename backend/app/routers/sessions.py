@@ -111,20 +111,16 @@ async def end_session(
 
     if session.scroll_events > 0:
         session.verified = True
-        from app.services.subscription import get_points_multiplier
-        multiplier = get_points_multiplier(current_user)
-        # Reward points per minute of reading (5 pts per 60s).
-        # Compatible with 1-minute slices.
-        base_points = (effective_duration // 60) * 5
-        pending = int(base_points * multiplier)
 
-        # Accumulate points (don't replace) to include ad rewards
-        session.pending_points = (session.pending_points or 0) + pending
+        # User earns points ONLY via the rewarded ads associated with this session.
+        # Reading time itself provides no extra points.
+        pending_total = session.pending_points or 0
+
         await db.commit()
         await db.refresh(session)
         return SessionEndResponse(
-            requires_claim=pending > 0,
-            pending_points=pending,
+            requires_claim=True, # Always require claim if verified to trigger post-read ad
+            pending_points=pending_total,
             session_id=session.id,
             verified=True,
         )
