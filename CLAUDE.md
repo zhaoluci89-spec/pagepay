@@ -25,7 +25,7 @@ pagepay/
 │   ├── steering.md    # Product vision, brand, hard constraints (READ FIRST)
 │   ├── agent/         # Role specs: backend.md, frontend.md, ai.md, devops.md
 │   └── command/       # Per-phase implementation specs (phase1-core.md … phase6-scale.md)
-├── backend/           # FastAPI + MySQL + Docker (Python 3.11)
+├── backend/           # FastAPI + PostgreSQL + Docker (Python 3.11)
 ├── client/            # Expo SDK 54 / RN 0.81 / expo-router (the "new" frontend)
 └── Earn9ja/           # Legacy / parallel Expo app (do not mix into client/)
 ```
@@ -58,7 +58,7 @@ pytest tests/test_auth.py                           # single test file
 pytest -k "test_login"                              # single test by name
 pytest --cov=app --cov-report=term                  # with coverage
 
-# Docker (api + mysql + cron — see docker-compose.yml)
+# Docker (api + postgres + cron — see docker-compose.yml)
 docker compose up --build                           # full stack
 docker compose up db api                            # skip cron
 ```
@@ -107,18 +107,18 @@ app/
 │   │   └── slicing/     # Long works → ~2-minute slices (parent_work_id + read_order)
 │   └── cron/            # Scheduled content sync (runs in its own Docker container)
 └── tests/               # pytest + pytest-asyncio; tests use sqlite+aiosqlite in-memory
-                         #   via conftest.py — NOT MySQL
+                         #   via conftest.py — NOT PostgreSQL
 ```
 
 ### Key patterns
 
 - **API prefix:** everything mounts under `/api/v1`. New endpoints go in `routers/` and are wired into `main.py`.
-- **Async DB:** SQLAlchemy 2.0 async + `aiomysql` (production) / `aiosqlite` (tests). Always `await db.execute(...)`, `await db.commit()`, `await db.refresh(...)`. `pool_pre_ping=False` is intentional — see the comment in `database.py` for the SQLAlchemy/aiomysql incompatibility.
+- **Async DB:** SQLAlchemy 2.0 async + `asyncpg` (production) / `aiosqlite` (tests). Always `await db.execute(...)`, `await db.commit()`, `await db.refresh(...)`.
 - **Auth:** JWT HS256, 7-day expiry (`ACCESS_TOKEN_EXPIRE_MINUTES=10080`). `get_current_user` dependency in `routers/auth.py` is the standard gate.
 - **Admin/cron auth:** shared secret in `X-Admin-Token` header, validated against `settings.admin_token`. Default `dev-admin-token` in dev — override in production.
 - **Anti-cheat (server):** if >45s since last heartbeat, pause the session timer. If `scroll_events` are zero for 3 consecutive heartbeats, pause. Points formula: `5 pts per 600s` of verified duration — recalculated server-side, never trusted from client.
 - **CORS:** `CORS_ORIGINS` is a comma-separated string; `settings.cors_origins_list` splits it. Default includes Expo's dev ports `8081` and `19006`.
-- **Reading engine model:** books/articles are sliced into ~2-min reads. `content_catalog` holds both parent works and child slices — `parent_work_id`/`read_order` link them. `reading_progress` is the coarse pointer (which slice to resume); `slice_bookmarks` is the fine pointer (scroll offset within a slice). See `routers/progress.py` for the full state machine (`/continue`, `/bookmark`, `/finish`, `/start`).
+- **Reading engine model:** books/articles are sliced into ~1-min reads. `content_catalog` holds both parent works and child slices — `parent_work_id`/`read_order` link them. Rewards are bundled: Pre-read Ad $\rightarrow$ Reading Session $\rightarrow$ Post-read Ad, with all points staged in `ReadingSession.pending_points` and linked via `AdRequest.session_id` before being credited as a single wallet transaction. `reading_progress` is the coarse pointer (which slice to resume); `slice_bookmarks` is the fine pointer (scroll offset within a slice). See `routers/progress.py` for the full state machine (`/continue`, `/bookmark`, `/finish`, `/start`).
 - **Response envelope convention (per `backend.md`):** lists as `{"data": ..., "meta": {"page": 1, "total": N}}`, errors as `{"error": {"code": "...", "message": "...", "details": {}}}`. Existing endpoints have drifted from this — normalize when adding new ones.
 
 ### Database schema (current)
