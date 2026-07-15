@@ -9,7 +9,7 @@ granularity, diagram support, and a 3-mode reader
 
 ---
 
-## Why this doc exists
+## Why this doc exists 
 
 v2 shipped the OpenStax education ingest and the work-level social
 features. The catalog has an `education_level` filter and a per-class

@@ -316,7 +316,7 @@ export default function ReaderScreen() {
 
   // Heartbeat + elapsed timer start AFTER the pre-read gate clears.
   useEffect(() => {
-    if (!sessionId) return;
+    if (!sessionId || preReadOpen) return;
 
     heartbeatRef.current = setInterval(() => {
       sendHeartbeat();
@@ -335,7 +335,7 @@ export default function ReaderScreen() {
       if (heartbeatRef.current) clearInterval(heartbeatRef.current);
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [sessionId]);
+  }, [sessionId, preReadOpen]);
 
   const sendHeartbeat = async () => {
     if (!sessionIdRef.current) return;
@@ -485,7 +485,6 @@ export default function ReaderScreen() {
     newBalance: number;
     pending?: boolean;
   }) => {
-    setPreReadOpen(false);
     // Ad reward already credited by the SSV flow (or
     // pending — the server may still be processing the
     // callback). Invalidate queries to refresh balance either
@@ -743,12 +742,20 @@ export default function ReaderScreen() {
         <View style={{ height: 40 }} />
       </ScrollView>
 
+      {/* v3 §3.4 — Reader mode switcher (Read / Study / Listen).
+          Pinned below the scroll so it's always reachable. */}
+      <ReaderModeSwitcher
+        isFirstUnit={isFirstUnit}
+        isPremium={isPremium}
+        onLockedListenTapped={() => setPaywallOpen(true)}
+      />
+
       <RewardedAd
         visible={preReadOpen}
         adUnit={adUnit}
         adUnitName={Platform.OS === 'android' ? 'rewarded_android' : 'rewarded_ios'}
         userId={user?.id ?? 0}
-        sessionId={sessionId}
+        sessionId={sessionId ?? undefined}
         title={t('reader.ad_pre_title')}
         eyebrow={t('reader.ad_pre_eyebrow')}
         body={t('reader.ad_pre_body')}
@@ -757,7 +764,7 @@ export default function ReaderScreen() {
         skipLabel={t('reader.ad_pre_skip')}
         onClaimed={onPreReadClaimed}
         onSkipped={onPreReadSkipped}
-        onClose={() => {}}
+        onClose={() => setPreReadOpen(false)}
       />
 
       {/* Post-read gate (the second ad). Sits BEFORE /session/end: the
@@ -772,13 +779,13 @@ export default function ReaderScreen() {
         adUnit={adUnit}
         adUnitName={Platform.OS === 'android' ? 'rewarded_android' : 'rewarded_ios'}
         userId={user?.id ?? 0}
-        sessionId={sessionId}
+        sessionId={sessionId ?? undefined}
         title={t('reader.ad_post_title')}
         eyebrow={t('reader.ad_post_eyebrow')}
         body={t('reader.ad_post_body')}
         claimLabel={t('reader.ad_post_claim')}
         allowSkip
-        skipLabel={t('reader.ad_post_skip')}
+        skipLabel={t('reader.ad_pre_skip')}
         onClaimed={onPostReadAdClaimed}
         onSkipped={onPostReadAdSkipped}
         onClose={() => {}}

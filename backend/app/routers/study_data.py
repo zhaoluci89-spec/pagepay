@@ -33,7 +33,7 @@ RequestSizeLimitMiddleware; we don't double-check here.
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -92,8 +92,8 @@ async def get_study_data(
 @router.put("", response_model=StudyDataBlob)
 @limiter.limit("60/minute")
 async def put_study_data(
+    request: Request,
     body: StudyDataBlob,
-    request: None = None,  # marker for slowapi key
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -108,9 +108,9 @@ async def put_study_data(
 @router.patch("/highlights/{unit_id}", response_model=StudyDataBlob)
 @limiter.limit("30/minute")
 async def patch_highlights(
+    request: Request,
     unit_id: int,
     body: StudyDataPatchHighlights,
-    request: None = None,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -135,9 +135,9 @@ async def patch_highlights(
 @router.patch("/notes/{unit_id}", response_model=StudyDataBlob)
 @limiter.limit("30/minute")
 async def patch_note(
+    request: Request,
     unit_id: int,
     body: StudyDataPatchNote,
-    request: None = None,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):

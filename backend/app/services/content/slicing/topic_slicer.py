@@ -598,6 +598,7 @@ async def slice_openstax_chapter(
             total_slices=None,  # filled after we know the total
             word_count=word_count,
             char_count=char_count,
+            body_sentinels_version=1,
             # Inherit the parent's education + license fields so the
             # catalog filter and the AttributionCard work without
             # re-fetching the parent.
@@ -766,6 +767,7 @@ async def slice_openstax_pages(
             total_slices=None,  # filled after we know the total
             word_count=word_count,
             char_count=char_count,
+            body_sentinels_version=1,
             # Inherit the parent's education + license fields.
             source=parent.source,
             education_level=parent.education_level,

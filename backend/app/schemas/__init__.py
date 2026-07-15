@@ -1458,6 +1458,16 @@ class ReadingUnitListResponse(BaseModel):
     slice_id: int
     units: list[ReadingUnitItem]
 
+class ReadingUnitDetail(BaseModel):
+    """Full content for a single unit. Returned by GET /content/units/{id}."""
+    id: int
+    body_text: str | None
+    unit_order: int
+    total_units: int
+    estimated_read_minutes: int
+
+    model_config = {"from_attributes": True}
+
 
 class ContentFilterResponse(BaseModel):
     """Catalog filter response — what values exist for each filter axis.

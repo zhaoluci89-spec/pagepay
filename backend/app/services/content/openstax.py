@@ -627,6 +627,7 @@ async def import_openstax_books(
                 subject=book.subject,
                 license_type=effective_license,
                 attribution_text=book.attribution,
+                body_sentinels_version=1,
             )
             db.add(parent)
             await db.flush()  # get parent.id for slice parent_work_id

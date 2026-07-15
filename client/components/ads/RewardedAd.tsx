@@ -200,6 +200,10 @@ export function RewardedAd(props: RewardedAdProps) {
           // Cleanup ad
           rewardedRef.current = null;
 
+          // Fire onClose immediately so the parent can dismiss the modal
+          // and unlock the UI/timer without waiting for the credit poll.
+          onClose();
+
           // Handle reward or skip
           if (rewardDataRef.current) {
             await handleRewardClaimed();
@@ -209,7 +213,6 @@ export function RewardedAd(props: RewardedAdProps) {
             // completing it. No credit will land server-side.
             // Match the legacy behavior: skip → onSkipped.
             onSkipped?.();
-            onClose();
           }
         });
 
@@ -270,7 +273,6 @@ export function RewardedAd(props: RewardedAdProps) {
       onClaimed({ pointsCredited: 0, newBalance: 0, pending: true });
     } finally {
       pollAbortRef.current = null;
-      onClose();
     }
   }, [onClaimed, onClose]);
 
