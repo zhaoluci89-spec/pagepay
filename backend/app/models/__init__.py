@@ -137,7 +137,7 @@ class ReadingSession(Base):
     # they complete the post-read ad claim. `points_earned` only becomes >0
     # after a successful POST /session/claim (which also stamps `claimed_at`).
     # This keeps the no-claim case from leaking free points into the wallet.
-    pending_points: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    pending_points: Mapped[int] = mapped_column(BigInteger, default=0, server_default="0")
     claimed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 

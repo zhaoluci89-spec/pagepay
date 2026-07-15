@@ -215,7 +215,7 @@ export default function ExamModeScreen() {
           </Text>
         </View>
 
-        <View style={styles.progressBarContainer}>
+        <View style={[styles.progressBarContainer, { backgroundColor: tokens.border }]}>
           <View style={[styles.progressBar, { width: `${progress}%`, backgroundColor: tokens.mint }]} />
         </View>
 
@@ -588,7 +588,6 @@ const styles = StyleSheet.create({
   },
   progressBarContainer: {
     height: 4,
-    backgroundColor: tokens.border,
     borderRadius: 2,
     marginHorizontal: 16,
     marginBottom: 16,

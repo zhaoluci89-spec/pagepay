@@ -11,7 +11,7 @@ import { apiFetch } from '@/src/shared/api/client';
 import { PagePay } from '@/constants/theme';
 import { useEffectiveScheme } from '@/src/shared/hooks/use-effective-scheme';
 
-function ShimmerBar({ style: extraStyle }: { style?: object }) {
+function ShimmerBar({ style: extraStyle, color }: { style?: object; color?: string }) {
   const opacity = useSharedValue(0.4);
   const animatedStyle = useAnimatedStyle(() => ({
     opacity: opacity.value,
@@ -24,7 +24,7 @@ function ShimmerBar({ style: extraStyle }: { style?: object }) {
   );
 
   return (
-    <Animated.View style={[styles.shimmerBar, animatedStyle, extraStyle]} />
+    <Animated.View style={[styles.shimmerBar, { backgroundColor: color ?? '#ccc' }, animatedStyle, extraStyle]} />
   );
 }
 
@@ -185,10 +185,10 @@ export default function StudyChatScreen() {
                   {msg.text}
                   {streaming && msg.role === 'assistant' && msg.text === '' && (
                     <View style={styles.shimmerContainer}>
-                      <ShimmerBar style={{ width: '60%' }} />
+                      <ShimmerBar style={{ width: '60%' }} color={tokens.border} />
                       <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
-                        <ShimmerBar style={{ width: '40%' }} />
-                        <ShimmerBar style={{ width: '30%' }} />
+                        <ShimmerBar style={{ width: '40%' }} color={tokens.border} />
+                        <ShimmerBar style={{ width: '30%' }} color={tokens.border} />
                       </View>
                     </View>
                   )}
@@ -324,6 +324,5 @@ const styles = StyleSheet.create({
   shimmerBar: {
     height: 12,
     borderRadius: 6,
-    backgroundColor: tokens.border,
   },
 });

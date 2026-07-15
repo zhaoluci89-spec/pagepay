@@ -41,8 +41,7 @@ import { apiFetch } from '@/src/shared/api/client';
  *  `app.config.js` → `expoConfig.extra.adsEnv`. Defaults to
  *  `dev` so a fresh dev build never accidentally serves prod
  *  unit IDs. CI sets this to `prod` before the staging build. */
-export const PLATFORM_ENV: 'dev' | 'prod' =
-  (Constants.expoConfig?.extra?.adsEnv as 'dev' | 'prod' | undefined) ?? 'dev';
+export const PLATFORM_ENV: 'dev' | 'prod' = __DEV__ ? 'dev' : 'prod';
 
 
 /** Slot + platform → unit id mapping. The server returns this

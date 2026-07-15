@@ -183,7 +183,7 @@ export function UnlockModal({
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
       <Animated.View 
         entering={FadeIn.duration(200)}
-        style={styles.overlay}
+        style={[styles.overlay, { backgroundColor: scheme === 'dark' ? 'rgba(0,0,0,0.7)' : 'rgba(0,0,0,0.55)' }]}
       >
         <Animated.View 
           entering={SlideInDown.duration(400).springify().damping(20).stiffness(300)}
@@ -239,7 +239,6 @@ export function UnlockModal({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: scheme === 'dark' ? 'rgba(0,0,0,0.7)' : 'rgba(0,0,0,0.55)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24,

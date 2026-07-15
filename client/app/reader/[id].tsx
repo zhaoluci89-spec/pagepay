@@ -3,7 +3,7 @@ import { View, Text, ScrollView, StyleSheet, AppState, AppStateStatus, Platform,
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { apiFetch } from '@/src/shared/api/client';
+import { apiFetch, API_URL } from '@/src/shared/api/client';
 import { RewardedAd } from '@/components/ads/RewardedAd';
 import { NativeAdBanner } from '@/components/ads/NativeAdBanner';
 import { BodyRenderer } from '@/components/reader/BodyRenderer';
@@ -646,7 +646,7 @@ export default function ReaderScreen() {
         {readerMode === 'listen' && (
           <ListenMode
             unitId={Number(id)}
-            audioUrl={content.audio_url}
+            audioUrl={content.audio_url ? `${API_URL}${content.audio_url}` : null}
             isFirstUnit={isFirstUnit}
             isPremium={isPremium}
             onUpgrade={() => setPaywallOpen(true)}
