@@ -307,11 +307,6 @@ async def log_fill_rate_event(
     return {"status": "logged", "ad_request_id": ad_request_id, "stage": stage}
 
 
-# ── AdMob SSV Webhook ─────────────────────────────────────────────
-        )
-    return out
-
-
 # ── POST /ads/google/callback — AdMob SSV webhook ──────────────────
 # AdMob Server-Side Verification callback. AdMob sends a GET request
 # with query parameters containing the reward data and an ECDSA P-256
