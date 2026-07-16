@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
-import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withTiming, Easing } from 'react-native-reanimated';
@@ -47,6 +47,7 @@ export default function StudyChatScreen() {
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
   const flatListRef = useRef<FlatList>(null);
+  const scrollViewRef = useRef<ScrollView>(null);
 
   const materialQ = useQuery({
     queryKey: ['study', 'material', materialId],
@@ -56,6 +57,12 @@ export default function StudyChatScreen() {
       return res.json();
     },
   });
+
+  useEffect(() => {
+    if (messages.length > 0) {
+      scrollViewRef.current?.scrollToEnd({ animated: true });
+    }
+  }, [messages]);
 
   const sendMessage = useCallback(
     async (text: string) => {
@@ -150,7 +157,12 @@ export default function StudyChatScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={80}
       >
-        <View style={[styles.messagesArea, { backgroundColor: tokens.paper }]}>
+        <ScrollView
+          ref={scrollViewRef}
+          style={[styles.messagesArea, { backgroundColor: tokens.paper }]}
+          contentContainerStyle={styles.messagesContent}
+          keyboardShouldPersistTaps="handled"
+        >
           {messages.length === 0 && (
             <View style={styles.emptyState}>
               <Ionicons name="chatbubbles-outline" size={40} color={tokens.mint} />
@@ -196,7 +208,7 @@ export default function StudyChatScreen() {
               </View>
             </View>
           ))}
-        </View>
+        </ScrollView>
 
         <View style={[styles.inputBar, { backgroundColor: tokens.card, borderTopColor: tokens.border }]}>
           <TextInput
@@ -257,10 +269,13 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   messagesArea: {
-    flex: 1,
     paddingHorizontal: 16,
     paddingVertical: 12,
     gap: 10,
+  },
+  messagesContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
   },
   emptyState: {
     flex: 1,
