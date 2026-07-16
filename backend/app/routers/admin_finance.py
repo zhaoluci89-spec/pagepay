@@ -39,7 +39,8 @@ async def revenue_summary(
     if end_date:
         end = datetime.fromisoformat(end_date).replace(tzinfo=timezone.utc)
 
-    # Ad Revenue - Calculate using historical FX rates
+    # Ad Revenue - Calculate using historical FX rates.
+    # Include both legacy events (with revenue_usd) and SSV events (with user_points_credited).
     ad_events = (
         await db.execute(
             select(
@@ -49,7 +50,7 @@ async def revenue_summary(
             )
             .where(AdEvent.created_at >= start)
             .where(AdEvent.created_at <= end)
-            .where(AdEvent.revenue_usd.isnot(None))
+            .where(AdEvent.credit_status == "credited")
         )
     ).all()
 

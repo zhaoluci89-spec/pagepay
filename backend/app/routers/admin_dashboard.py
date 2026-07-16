@@ -68,7 +68,8 @@ async def dashboard_stats(
         )
     ).scalar_one()
 
-    # Ad Revenue - Calculate using historical FX rates stored in each AdEvent
+    # Ad Revenue - Calculate using historical FX rates stored in each AdEvent.
+    # Include both legacy events (with revenue_usd) and SSV events (with user_points_credited).
     ad_events = (
         await db.execute(
             select(
@@ -77,7 +78,7 @@ async def dashboard_stats(
                 AdEvent.user_points_credited,
             )
             .where(AdEvent.created_at >= today_start)
-            .where(AdEvent.revenue_usd.isnot(None))
+            .where(AdEvent.credit_status == "credited")
         )
     ).all()
 

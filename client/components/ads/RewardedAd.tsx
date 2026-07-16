@@ -237,15 +237,10 @@ export function RewardedAd(props: RewardedAdProps) {
     })();
 
     return () => {
-      // Cleanup handled by ad event listeners
-    };
-  }, [visible, preload, adUnit, userId, sessionId, adUnitName, onClose, onClaimed, onSkipped]);
-    return () => {
       pollAbortRef.current?.abort();
       pollAbortRef.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible, adUnit, adUnitName, userId, onSkipped, onClose]);
+  }, [visible, preload, adUnit, userId, sessionId, adUnitName, onClose, onClaimed, onSkipped]);
 
   // Step 4-6: poll for the credit. This is the core of the
   // server-authoritative flow — the AdMob SDK has already

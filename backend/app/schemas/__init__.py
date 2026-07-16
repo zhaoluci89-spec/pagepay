@@ -1567,3 +1567,29 @@ class FinishSliceBody(BaseModel):
     match the DB CHECK constraint from migration 016.
     """
     reader_mode: Literal["read", "study", "listen"] | None = None
+
+
+class UserDailyAdStat(BaseModel):
+    """Ad stats for one user on one day."""
+    user_id: int
+    date: str  # ISO date
+    ads_watched: int
+    points_earned: int
+
+
+class AdUnitDailyStat(BaseModel):
+    """Ad stats for one ad unit on one day."""
+    date: str
+    ad_unit: str
+    ads_count: int
+    points_credited: int
+
+
+class AdDailyTotals(BaseModel):
+    """Aggregated ad totals for one day."""
+    date: str
+    total_ads: int
+    total_points_credited: int
+    total_users: int
+    total_revenue_usd: float
+    total_revenue_ngn_kobo: int
