@@ -13,7 +13,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, Platform } from 'react-native';
+import { View, Text, StyleSheet, Platform, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 import { PagePay } from '@/constants/theme';
@@ -45,57 +45,55 @@ export function NativeAdBanner({ adUnit, sessionId }: NativeAdBannerProps) {
     }
 
     let isActive = true;
-    let unsubLoaded: (() => void) | null = null;
-    let unsubError: (() => void) | null = null;
+    let unsubClicked: (() => void) | null = null;
 
-    (async () => {
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const { NativeAd, NativeAdEventType } = require('react-native-google-mobile-ads');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { NativeAd, NativeAdEventType, NativeAdView, NativeAsset, NativeMediaView, NativeAssetType } = require('react-native-google-mobile-ads');
 
-        const ad = NativeAd.createForAdRequest(adUnit);
+    NativeAd.createForAdRequest(adUnit)
+      .then((ad) => {
+        if (!isActive) {
+          ad.destroy();
+          return;
+        }
         adRef.current = ad;
+        setNativeAd(ad);
+        setError(false);
 
-        unsubLoaded = ad.addAdEventListener(NativeAdEventType.LOADED, () => {
-          if (__DEV__) {
-            console.log('[NativeAdBanner] Ad loaded successfully');
+        unsubClicked = ad.addAdEventListener(
+          NativeAdEventType.CLICKED,
+          () => {
+            if (__DEV__) {
+              console.log('[NativeAdBanner] Ad clicked');
+            }
           }
-          if (isActive) {
-            setNativeAd(ad);
-            setError(false);
-          }
-        });
-
-        unsubError = ad.addAdEventListener(NativeAdEventType.ERROR, (err: any) => {
-          if (__DEV__) {
-            console.warn('[NativeAdBanner] Ad failed to load:', err);
-          }
-          if (isActive) {
-            setError(true);
-          }
-        });
-
-        ad.load();
-      } catch (err) {
+        );
+      })
+      .catch((err) => {
         if (__DEV__) {
-          console.warn('[NativeAdBanner] Failed to create ad:', err);
+          console.warn('[NativeAdBanner] Failed to load ad:', err);
         }
         if (isActive) {
           setError(true);
         }
-      }
-    })();
+      });
 
     return () => {
       isActive = false;
-      if (unsubLoaded) unsubLoaded();
-      if (unsubError) unsubError();
+      if (unsubClicked) unsubClicked();
       if (adRef.current) {
         adRef.current.destroy();
         adRef.current = null;
       }
     };
   }, [adUnit]);
+
+  useEffect(() => {
+    if (!nativeAd) return;
+    return () => {
+      nativeAd.destroy();
+    };
+  }, [nativeAd]);
 
   if (error || !nativeAd) {
     return null;
@@ -120,7 +118,11 @@ export function NativeAdBanner({ adUnit, sessionId }: NativeAdBannerProps) {
             {/* Icon */}
             {nativeAd.icon && (
               <NativeAsset assetType={NativeAssetType.ICON}>
-                <View style={styles.icon} />
+                <Image
+                  source={{ uri: nativeAd.icon.url }}
+                  style={{ width: 32, height: 32, borderRadius: 6 }}
+                  resizeMode="cover"
+                />
               </NativeAsset>
             )}
 
@@ -200,11 +202,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     marginBottom: 6,
-  },
-  icon: {
-    width: 32,
-    height: 32,
-    borderRadius: 6,
   },
   textContent: {
     flex: 1,

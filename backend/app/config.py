@@ -88,11 +88,13 @@ class Settings(BaseSettings):
     admob_app_id_android: str | None = None
     admob_app_id_ios: str | None = None
     applovin_sdk_key: str | None = None
-    # Shared secret for AdMob Server-Side Verification webhooks.
-    # AdMob signs each callback with this value via HMAC-SHA256; we
-    # verify in `routers/ads.py:admob_ssv_callback` and return 401
-    # on mismatch. Configure in the AdMob dashboard under
-    # "SSV settings" — must match this value exactly.
+    # IMPORTANT: AdMob SSV uses ECDSA P-256 signature verification with
+    # Google's public keys (fetched from gstatic.com/admob/reward/verifier-keys.json),
+    # NOT HMAC-SHA256 with a shared secret. This field is kept for backwards
+    # compatibility or reserved for future use (e.g., webhook authentication
+    # layer in front of the SSV endpoint). The actual SSV verification logic
+    # in routers/ads.py:admob_ssv_callback uses cryptography.hazmat ECDSA
+    # verification. See: https://developers.google.com/admob/android/ssv
     admob_webhook_secret: str | None = None
     # AppLovin SSV shared secret. The AppLovin webhook handler
     # returns 501 until this is set (the rest of the AppLovin

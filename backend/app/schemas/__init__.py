@@ -1593,3 +1593,72 @@ class AdDailyTotals(BaseModel):
     total_users: int
     total_revenue_usd: float
     total_revenue_ngn_kobo: int
+
+
+# ── New Ad Monitoring Schemas ────────────────────────────────────────
+
+
+class AdSsvLogItem(BaseModel):
+    """Single SSV callback log entry."""
+    id: int
+    user_id: int | None
+    token: str | None
+    transaction_id: str | None
+    ad_unit: str | None
+    status: str
+    rejection_reason: str | None
+    points_credited: int | None
+    created_at: str  # ISO timestamp
+
+
+class EcpmTrendItem(BaseModel):
+    """Daily eCPM data point."""
+    date: str
+    ads_watched: int
+    total_points: int
+    ecpm_ngn: float
+
+
+class TopEarnerItem(BaseModel):
+    """User with high ad earnings."""
+    user_id: int
+    email: str
+    ads_watched: int
+    total_points: int
+    total_ngn: float
+
+
+class UnitPerformanceItem(BaseModel):
+    """Performance stats for one ad unit."""
+    ad_unit: str
+    ads_watched: int
+    total_points: int
+    unique_users: int
+    avg_points_per_ad: float
+
+
+class SuspiciousUserItem(BaseModel):
+    """User flagged for suspicious ad watch patterns."""
+    user_id: int
+    email: str
+    status: str
+    ads_watched: int
+    total_points: int
+    first_ad: str
+    last_ad: str
+    hours_active: float
+    ads_per_hour: float
+    risk_level: str  # "yellow" | "orange" | "red"
+
+
+class FillRateFunnelItem(BaseModel):
+    """Ad fill rate funnel metrics."""
+    requested: int
+    loaded: int
+    shown: int
+    completed: int
+    failed: int
+    load_rate: float
+    show_rate: float
+    completion_rate: float
+    overall_completion_rate: float

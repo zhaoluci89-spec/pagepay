@@ -118,17 +118,7 @@ export function RewardedAd(props: RewardedAdProps) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const rewardedRef = useRef<any>(null);
   const rewardDataRef = useRef<{ type: string; amount: number } | null>(null);
-  const hasLoadedRef = useRef(false); // Track if we've loaded for this modal open
-  // The freshly-issued AdRequest token + the timestamp captured
-  // right before requesting it. The poll uses this timestamp to
-  // scope /recent-credits to "credits that landed during/after
-  // this ad" so we don't accidentally pick up an unrelated
-  // credit from earlier in the session.
   const tokenIssuedAtRef = useRef<string | null>(null);
-  // AbortController for the in-flight pollRecentCredits. The
-  // AdEventType.CLOSED handler awaits this; if the component
-  // unmounts mid-poll (user navigated away), the controller
-  // aborts and the loop exits cleanly.
   const pollAbortRef = useRef<AbortController | null>(null);
 
   const onCloseRef = useRef(onClose);
@@ -141,29 +131,38 @@ export function RewardedAd(props: RewardedAdProps) {
     onSkippedRef.current = onSkipped;
   }, [onClose, onClaimed, onSkipped]);
 
-  // Load ad when modal opens, or when preload is requested
+  // Load ad when modal opens, or when preload is requested.
+  // We do NOT gate on hasLoadedRef here because that flag can
+  // block reloading between pre-read and post-read. Instead,
+  // we always clean up the previous ad and load a fresh one.
   useEffect(() => {
     const shouldLoad = visible || preload;
     if (!shouldLoad) {
-      hasLoadedRef.current = false;
       return;
     }
 
-    if (Platform.OS === 'web' || !adUnit || !userId || hasLoadedRef.current) {
+    if (Platform.OS === 'web' || !adUnit || !userId) {
       return;
     }
 
-    hasLoadedRef.current = true;
+    // If we already have a loaded ad for this slot, don't
+    // recreate it just because `visible` toggled.
+    if (rewardedRef.current && (rewardedRef.current as any)._adUnit === adUnit) {
+      return;
+    }
+
+    let isActive = true;
+    let unsubLoaded: (() => void) | null = null;
+    let unsubEarned: (() => void) | null = null;
+    let unsubClosed: (() => void) | null = null;
+
     setAdState('loading');
     setErrorMessage(null);
+    rewardDataRef.current = null;
 
     if (__DEV__) {
       console.log('[RewardedAd] Loading ad...', { visible, preload });
     }
-
-    let unsubLoaded: (() => void) | null = null;
-    let unsubEarned: (() => void) | null = null;
-    let unsubClosed: (() => void) | null = null;
 
     (async () => {
       try {
@@ -200,12 +199,15 @@ export function RewardedAd(props: RewardedAdProps) {
         const ad = RealRewardedAd.createForAdRequest(adUnit, {
           serverSideVerificationOptions: ssvOptions,
         });
+        (ad as any)._adUnit = adUnit;
 
         unsubLoaded = ad.addAdEventListener(RewardedAdEventType.LOADED, () => {
           if (__DEV__) {
             console.log('[RewardedAd] Ad ready');
           }
-          setAdState('ready');
+          if (isActive) {
+            setAdState('ready');
+          }
         });
 
         unsubEarned = ad.addAdEventListener(RewardedAdEventType.EARNED_REWARD, (reward: { type: string; amount: number }) => {
@@ -223,8 +225,8 @@ export function RewardedAd(props: RewardedAdProps) {
           if (unsubLoaded) unsubLoaded();
           if (unsubEarned) unsubEarned();
           if (unsubClosed) unsubClosed();
+
           rewardedRef.current = null;
-          hasLoadedRef.current = false;
 
           onCloseRef.current();
 
@@ -243,13 +245,15 @@ export function RewardedAd(props: RewardedAdProps) {
         if (__DEV__) {
           console.error('[RewardedAd] Load failed:', err);
         }
-        setAdState('error');
-        setErrorMessage(err instanceof Error ? err.message : 'Ad service unavailable');
-        hasLoadedRef.current = false;
+        if (isActive) {
+          setAdState('error');
+          setErrorMessage(err instanceof Error ? err.message : 'Ad service unavailable');
+        }
       }
     })();
 
     return () => {
+      isActive = false;
       pollAbortRef.current?.abort();
       pollAbortRef.current = null;
       if (unsubLoaded) unsubLoaded();
@@ -257,7 +261,7 @@ export function RewardedAd(props: RewardedAdProps) {
       if (unsubClosed) unsubClosed();
       rewardedRef.current = null;
     };
-  }, [visible, preload, adUnit, userId, sessionId, adUnitName]);
+  }, [preload, adUnit, userId, sessionId, adUnitName, onClaimed, onSkipped, onClose]);
 
   // Step 4-6: poll for the credit. This is the core of the
   // server-authoritative flow — the AdMob SDK has already
@@ -273,29 +277,25 @@ export function RewardedAd(props: RewardedAdProps) {
     try {
       const credit = await pollRecentCredits(since, { signal: controller.signal });
       if (credit) {
-        onClaimed({
+        onClaimedRef.current({
           pointsCredited: credit.points_credited,
           newBalance: credit.new_balance,
         });
       } else {
-        // Poll budget ran out. The credit may still land — the
-        // next /auth/me refresh will show it. Fire onClaimed
-        // with pending=true so the parent can show a "credit
-        // pending" toast but still advance the user.
         if (__DEV__) {
           console.log('[RewardedAd] pollRecentCredits returned null — credit may still be in flight');
         }
-        onClaimed({ pointsCredited: 0, newBalance: 0, pending: true });
+        onClaimedRef.current({ pointsCredited: 0, newBalance: 0, pending: true });
       }
     } catch (err) {
       if (__DEV__) {
         console.error('[RewardedAd] pollRecentCredits threw', err);
       }
-      onClaimed({ pointsCredited: 0, newBalance: 0, pending: true });
+      onClaimedRef.current({ pointsCredited: 0, newBalance: 0, pending: true });
     } finally {
       pollAbortRef.current = null;
     }
-  }, [onClaimed, onClose]);
+  }, [onClaimed]);
 
   const handleWatchAd = useCallback(() => {
     if (!rewardedRef.current || adState !== 'ready') {
@@ -322,13 +322,12 @@ export function RewardedAd(props: RewardedAdProps) {
   }, [adState]);
 
   const handleSkip = useCallback(() => {
-    onSkipped?.();
-    onClose();
-  }, [onSkipped, onClose]);
+    onSkippedRef.current?.();
+    onCloseRef.current();
+  }, []);
 
   const handleRetry = useCallback(() => {
     setErrorMessage(null);
-    hasLoadedRef.current = false; // Reset to allow retry
     setAdState('loading');
   }, []);
 
@@ -437,12 +436,10 @@ export function RewardedAd(props: RewardedAdProps) {
                 style={({ pressed }) => [
                   styles.button,
                   styles.secondaryButton,
-                  { opacity: pressed ? 0.6 : 1 },
+                  { borderColor: tokens.border, opacity: pressed ? 0.7 : 1 },
                 ]}
               >
-                <Text style={[styles.secondaryButtonText, { color: tokens.inkMuted }]}>
-                  {skipLabel}
-                </Text>
+                <Text style={[styles.buttonText, { color: tokens.inkMuted }]}>{skipLabel}</Text>
               </Pressable>
             )}
           </View>
@@ -462,78 +459,73 @@ const styles = StyleSheet.create({
   },
   modal: {
     width: '100%',
-    maxWidth: 400,
-    borderRadius: 24,
+    maxWidth: 360,
+    borderRadius: 20,
     borderWidth: 1,
     padding: 24,
-    gap: 16,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.15,
-    shadowRadius: 16,
+    shadowRadius: 12,
     elevation: 8,
   },
   eyebrow: {
+    fontFamily: 'SpaceGrotesk_500Medium',
     fontSize: 12,
-    fontWeight: '600',
     textTransform: 'uppercase',
     letterSpacing: 1,
+    marginBottom: 8,
   },
   title: {
-    fontSize: 22,
-    fontWeight: '700',
-    letterSpacing: -0.5,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 20,
+    marginBottom: 8,
   },
   body: {
+    fontFamily: 'SpaceGrotesk_500Medium',
     fontSize: 14,
     lineHeight: 20,
+    marginBottom: 24,
   },
   content: {
     alignItems: 'center',
     paddingVertical: 24,
-    gap: 16,
   },
   iconContainer: {
     width: 80,
     height: 80,
     borderRadius: 40,
-    justifyContent: 'center',
     alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
   },
   statusText: {
-    fontSize: 15,
-    fontWeight: '600',
+    fontFamily: 'SpaceGrotesk_500Medium',
+    fontSize: 16,
     textAlign: 'center',
   },
   actions: {
     gap: 12,
-    marginTop: 8,
   },
   button: {
-    flexDirection: 'row',
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 24,
-    borderRadius: 12,
+    flexDirection: 'row',
   },
   primaryButton: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+    backgroundColor: '#000',
+  },
+  secondaryButton: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
   },
   buttonText: {
     color: '#fff',
     fontSize: 16,
-    fontWeight: '700',
-  },
-  secondaryButton: {
-    backgroundColor: 'transparent',
-  },
-  secondaryButtonText: {
-    fontSize: 15,
     fontWeight: '600',
+    fontFamily: 'SpaceGrotesk_500Medium',
   },
 });

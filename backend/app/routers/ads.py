@@ -249,6 +249,66 @@ async def list_recent_credits(
                 new_balance=me,
             )
         )
+
+    return out
+
+
+# ── POST /ads/fill-rate-event — Track ad lifecycle for fill rate analytics ───
+
+
+@router.post("/fill-rate-event", status_code=201)
+async def log_fill_rate_event(
+    ad_request_id: str = Query(..., description="Client-generated UUID tracking this ad through its lifecycle"),
+    ad_unit: str = Query(..., description="Ad unit name (e.g., rewarded_android)"),
+    stage: str = Query(..., description="Stage: requested, loaded, shown, completed, failed"),
+    error_code: str | None = Query(None, description="Error code if stage=failed"),
+    error_message: str | None = Query(None, description="Error message if stage=failed"),
+    session_id: int | None = Query(None, description="Reading session ID if applicable"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Log ad lifecycle events for fill rate tracking and analytics.
+    
+    Client should call this at each stage of the ad lifecycle:
+    1. 'requested' - User tapped "Watch Ad" button
+    2. 'loaded' - Ad finished loading (AdEventType.LOADED)
+    3. 'shown' - Ad started playing
+    4. 'completed' - User finished watching (rewarded ad only)
+    5. 'failed' - Ad failed to load/show (AdEventType.ERROR)
+    
+    The same ad_request_id should be used across all stages for one ad.
+    Admin dashboard uses this to calculate fill rate funnel metrics.
+    """
+    from app.models import AdFillRateEvent
+    
+    # Validate stage
+    valid_stages = {"requested", "loaded", "shown", "completed", "failed"}
+    if stage not in valid_stages:
+        raise HTTPException(status_code=400, detail=f"Invalid stage. Must be one of: {valid_stages}")
+    
+    event = AdFillRateEvent(
+        user_id=current_user.id,
+        session_id=session_id,
+        ad_request_id=ad_request_id,
+        ad_unit=ad_unit,
+        stage=stage,
+        error_code=error_code,
+        error_message=error_message,
+    )
+    
+    db.add(event)
+    await db.commit()
+    
+    logger.debug(
+        "Fill rate event: user=%s ad_request=%s unit=%s stage=%s",
+        current_user.id, ad_request_id, ad_unit, stage,
+    )
+    
+    return {"status": "logged", "ad_request_id": ad_request_id, "stage": stage}
+
+
+# ── AdMob SSV Webhook ─────────────────────────────────────────────
+        )
     return out
 
 
@@ -473,7 +533,12 @@ async def admob_ssv_callback(
       - 200 `{"status": "ignored", "reason": ...}` for benign
         rejections (unknown token, expired, malformed custom_data)
       - 401 on signature failure
+      
+    Every callback attempt (success or failure) is logged to ad_ssv_logs
+    for admin monitoring and debugging.
     """
+    from app.models import AdSsvLog
+    
     # Get both decoded params (for reading values) and raw query string (for
     # signature verification — AdMob signs the URL-encoded form, not decoded).
     raw_query_bytes = request.scope.get("query_string", b"") or b""
@@ -482,6 +547,27 @@ async def admob_ssv_callback(
 
     if not query_params:
         return {"status": "verification_success"}
+
+    # Helper to log SSV attempts to database
+    async def log_ssv_attempt(
+        user_id: int | None,
+        token: str | None,
+        status: str,
+        rejection_reason: str | None = None,
+        points_credited: int | None = None,
+    ):
+        log_entry = AdSsvLog(
+            user_id=user_id,
+            token=token,
+            transaction_id=query_params.get("transaction_id"),
+            ad_unit=query_params.get("ad_unit"),
+            status=status,
+            rejection_reason=rejection_reason,
+            raw_query_params=query_params,
+            points_credited=points_credited,
+        )
+        db.add(log_entry)
+        # Don't await commit here — we'll commit with the main transaction
 
     # ── 1. Signature verification ─────────────────────────────────
     # CRITICAL: bad signature → 401, do NOT continue.
@@ -492,21 +578,40 @@ async def admob_ssv_callback(
             query_params.get("transaction_id", "unknown"),
             query_params,
         )
+        await log_ssv_attempt(
+            user_id=None,
+            token=None,
+            status="signature_failed",
+            rejection_reason="ECDSA P-256 signature verification failed",
+        )
+        await db.commit()
         raise HTTPException(status_code=401, detail="Invalid SSV signature")
 
     # ── 2. Parse custom_data = "user_id:token" ─────────────────────
-    # The client set this when requesting the ad (via the
-    # /request-token endpoint). AdMob signs it as part of the SSV
-    # payload, so the value is trustworthy on receipt.
     custom_data = query_params.get("custom_data", "")
     if ":" not in custom_data:
         logger.warning("AdMob SSV: missing or malformed custom_data: %r", custom_data)
+        await log_ssv_attempt(
+            user_id=None,
+            token=None,
+            status="malformed_custom_data",
+            rejection_reason=f"custom_data missing or invalid: {custom_data!r}",
+        )
+        await db.commit()
         return {"status": "ignored", "reason": "missing_custom_data"}
+    
     try:
         user_id_str, token = custom_data.split(":", 1)
         user_id = int(user_id_str)
-    except (ValueError, AttributeError):
+    except (ValueError, AttributeError) as e:
         logger.warning("AdMob SSV: malformed custom_data: %r", custom_data)
+        await log_ssv_attempt(
+            user_id=None,
+            token=None,
+            status="malformed_custom_data",
+            rejection_reason=f"Failed to parse custom_data: {e}",
+        )
+        await db.commit()
         return {"status": "ignored", "reason": "malformed_custom_data"}
 
     transaction_id = query_params.get("transaction_id", "")
@@ -516,48 +621,66 @@ async def admob_ssv_callback(
     req = await ads_service.lookup_ad_request_by_token(db, token)
     if req is None:
         logger.warning("AdMob SSV: unknown token (user=%s, tx=%s)", user_id, transaction_id)
+        await log_ssv_attempt(
+            user_id=user_id,
+            token=token,
+            status="unknown_token",
+            rejection_reason=f"No AdRequest found for token {token}",
+        )
+        await db.commit()
         return {"status": "ignored", "reason": "unknown_token"}
 
     # ── 4. Validate the callback matches what we issued ───────────
-    # user_id in custom_data must match the user we issued the
-    # token to. A forged callback that guesses a valid token still
-    # needs to know the user_id — and AdMob signs the whole
-    # payload, so an attacker can't substitute a different
-    # user_id without breaking the signature check above.
     if req.user_id != user_id:
         logger.warning(
             "AdMob SSV: user mismatch (token_user=%s, custom_data_user=%s, tx=%s)",
             req.user_id, user_id, transaction_id,
         )
+        await log_ssv_attempt(
+            user_id=user_id,
+            token=token,
+            status="user_mismatch",
+            rejection_reason=f"Token issued to user {req.user_id}, callback claims user {user_id}",
+        )
+        await db.commit()
         return {"status": "ignored", "reason": "user_mismatch"}
 
-    # Already-credited: idempotent no-op. The AdRequest row is
-    # the source of truth; we don't re-look-up by transaction_id
-    # because the same transaction_id could in theory appear
-    # against a different AdRequest (though in practice it can't —
-    # see the UNIQUE constraint on admob_transaction_id).
+    # Already-credited: idempotent no-op
     if req.status == "credited":
+        await log_ssv_attempt(
+            user_id=user_id,
+            token=token,
+            status="duplicate",
+            rejection_reason="AdRequest already credited",
+            points_credited=req.points_credited or 0,
+        )
+        await db.commit()
         return {
             "status": "duplicate",
             "points_credited": req.points_credited or 0,
         }
 
-    # Expired or already rejected: surface a clear reason. We do
-    # NOT flip the row to "rejected" here if it's already terminal
-    # (mark_ad_request_rejected is idempotent on terminal status).
+    # Expired or already rejected
     if req.status != "issued" or req.expires_at < datetime.utcnow():
         await ads_service.mark_ad_request_rejected(db, req, reason="expired_or_invalid")
+        await log_ssv_attempt(
+            user_id=user_id,
+            token=token,
+            status="expired",
+            rejection_reason=f"AdRequest status={req.status}, expired={req.expires_at < datetime.utcnow()}",
+        )
         await db.commit()
         return {"status": "ignored", "reason": "expired_or_invalid"}
 
     # ── 5. Validate ad_unit is rewarded-only ──────────────────────
-    # Per the user-facing decision, in-feed and interstitial ads
-    # earn zero points. The /request-token endpoint also rejects
-    # non-rewarded units upfront, but we double-check here in case
-    # the client sent a non-rewarded unit (the SSV callback will
-    # still arrive with that ad_unit value).
     if not req.ad_unit.startswith("rewarded_"):
         await ads_service.mark_ad_request_rejected(db, req, reason="non_rewarded_unit")
+        await log_ssv_attempt(
+            user_id=user_id,
+            token=token,
+            status="non_rewarded_unit",
+            rejection_reason=f"ad_unit {req.ad_unit} is not a rewarded unit",
+        )
         await db.commit()
         logger.info(
             "AdMob SSV: non-rewarded ad_unit=%s (user=%s, tx=%s) — no credit",
@@ -565,11 +688,7 @@ async def admob_ssv_callback(
         )
         return {"status": "ignored", "reason": "non_rewarded_unit"}
 
-    # Optional sanity: the ad_unit in the SSV callback should match
-    # the one we issued. If they differ, something weird is going on
-    # (e.g. the client requested a rewarded_android token but the
-    # user saw an in_feed unit) — log and continue with the issued
-    # unit's payout (the ad_unit we *promised* to credit).
+    # Optional sanity check
     if ad_unit_from_callback and ad_unit_from_callback != req.ad_unit:
         logger.warning(
             "AdMob SSV: ad_unit mismatch (issued=%s, callback=%s, user=%s, tx=%s)",
@@ -577,11 +696,6 @@ async def admob_ssv_callback(
         )
 
     # ── 6. Credit the user or session ────────────────────────────────
-    # AdMob never sends real revenue in the SSV webhook. The only
-    # numeric reward payload is `reward_amount`: the static value
-    # you manually set in the AdMob dashboard. We use that as the
-    # source of truth for points, applying the platform/user split
-    # here rather than relying on a separate hardcoded constant.
     raw_reward = query_params.get("reward_amount")
     try:
         reward_amount = int(raw_reward) if raw_reward is not None else 0
@@ -594,6 +708,12 @@ async def admob_ssv_callback(
             raw_reward, transaction_id, user_id,
         )
         await ads_service.mark_ad_request_rejected(db, req, reason="invalid_reward_amount")
+        await log_ssv_attempt(
+            user_id=user_id,
+            token=token,
+            status="invalid_reward_amount",
+            rejection_reason=f"reward_amount={raw_reward!r} is not positive",
+        )
         await db.commit()
         return {"status": "ignored", "reason": "invalid_reward_amount"}
 
@@ -605,9 +725,7 @@ async def admob_ssv_callback(
     )
 
     if req.session_id:
-        # Bundle reward into the reading session instead of global balance.
-        # If the session is already claimed, credit the user's wallet
-        # directly — the pending_points window has closed.
+        # Bundle reward into the reading session instead of global balance
         session_claimed = False
         if req.session_id:
             session_row = await db.execute(
@@ -663,6 +781,16 @@ async def admob_ssv_callback(
         credit_status="credited",
     )
     db.add(event)
+    
+    # Log successful SSV callback
+    await log_ssv_attempt(
+        user_id=user_id,
+        token=token,
+        status="success",
+        rejection_reason=None,
+        points_credited=points,
+    )
+    
     await db.commit()
 
     me = (

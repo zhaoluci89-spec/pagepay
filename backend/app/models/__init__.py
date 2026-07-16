@@ -228,7 +228,7 @@ class AdEvent(Base):
     watched_fully: Mapped[bool] = mapped_column(Boolean, default=False)
     reward_granted: Mapped[bool] = mapped_column(Boolean, default=False)
     transaction_id: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
     # ── Per-impression reward math fields ───────────────────────────────
     # `revenue_usd` is what the network reported for this single impression
     # (AdMob's onAdPaid callback, AppLovin's postback, etc.). Distinct from
@@ -261,6 +261,69 @@ class AdEvent(Base):
     #                          fabricate a "1 point" floor)
     #   "duplicate"          — transaction_id already seen; idempotent no-op
     credit_status: Mapped[str] = mapped_column(String(50), default="credited")
+
+
+class AdSsvLog(Base):
+    """Log of ALL AdMob SSV callbacks - success and failure.
+    
+    Used for admin monitoring of SSV callback health, debugging signature
+    failures, and detecting patterns like expired tokens or user mismatches.
+    Every SSV callback attempt (whether it results in a credit or rejection)
+    creates one row here.
+    
+    Indexes: user_id for per-user investigation, token for debugging specific
+    requests, status for filtering in admin dashboard, created_at for
+    time-based queries.
+    """
+    __tablename__ = "ad_ssv_logs"
+    
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    # User from custom_data (may be NULL if custom_data was malformed)
+    user_id: Mapped[int | None] = mapped_column(BigInteger, index=True, nullable=True)
+    # Token from custom_data (may be NULL if custom_data was malformed)
+    token: Mapped[str | None] = mapped_column(String(64), index=True, nullable=True)
+    # AdMob transaction_id from query params
+    transaction_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # ad_unit from query params
+    ad_unit: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # Status: 'success' | 'signature_failed' | 'expired' | 'duplicate' | 
+    #         'user_mismatch' | 'malformed_custom_data' | 'unknown_token' |
+    #         'non_rewarded_unit' | 'invalid_reward_amount'
+    status: Mapped[str] = mapped_column(String(50), index=True)
+    # Human-readable reason for rejections
+    rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Full query params as JSON for debugging
+    raw_query_params: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # Points credited (NULL for failures)
+    points_credited: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
+class AdFillRateEvent(Base):
+    """Track ad lifecycle: requested → loaded → shown → completed → failed.
+    
+    Used to calculate fill rates, identify SDK issues, and monitor ad
+    performance. Each stage of the ad lifecycle creates one row. For a
+    successful ad watch, you'll see 4 rows with the same ad_request_id:
+    requested, loaded, shown, completed.
+    
+    Indexes: user_id for per-user analysis, ad_unit for per-unit performance,
+    stage for funnel queries, created_at for time-based analysis.
+    """
+    __tablename__ = "ad_fill_rate_events"
+    
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    session_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    # Client-generated UUID to track one ad through its lifecycle
+    ad_request_id: Mapped[str] = mapped_column(String(64), index=True)
+    ad_unit: Mapped[str] = mapped_column(String(100), index=True)
+    # Stage: 'requested' | 'loaded' | 'shown' | 'completed' | 'failed'
+    stage: Mapped[str] = mapped_column(String(20), index=True)
+    # Error code if stage = 'failed' (AdMob error code)
+    error_code: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
 
 
 class ReadingProgress(Base):
