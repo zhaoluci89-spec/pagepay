@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { adminApi } from "@/lib/api";
-import { Card, ShimmerLoader, Select } from "@/shared/components";
+import { Card, ShimmerLoader, Select, Button } from "@/shared/components";
+import { Download } from "lucide-react";
+import { exportToCsv } from "@/shared/utils/exportCsv";
 
 type TopEarner = {
   user_id: number;
@@ -32,7 +34,7 @@ export function TopEarnersTable() {
         <p className="mt-0.5 text-sm text-text-muted">
           Users with highest ad rewards
         </p>
-        <div className="mt-3">
+        <div className="mt-3 flex flex-wrap gap-3 items-end">
           <Select
             label="Time Range"
             value={days}
@@ -44,6 +46,29 @@ export function TopEarnersTable() {
             ]}
             className="w-48"
           />
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => {
+              if (earners.length > 0) {
+                exportToCsv(
+                  earners.map((e, idx) => ({
+                    rank: idx + 1,
+                    user_id: e.user_id,
+                    email: e.email,
+                    ads_watched: e.ads_watched,
+                    total_points: e.total_points,
+                    ngn_value: e.total_ngn.toFixed(2),
+                  })),
+                  "top_earners",
+                );
+              }
+            }}
+            disabled={!earners || earners.length === 0}
+          >
+            <Download size={16} className="mr-1" />
+            Export CSV
+          </Button>
         </div>
       </div>
 

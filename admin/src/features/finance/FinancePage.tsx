@@ -19,8 +19,9 @@ import type { DateRangePreset } from "@/shared/components";
 import { TopHeader } from "@/shared/components/TopHeader";
 import { useLayoutContext } from "@/shared/components/Layout";
 import { useAuthStore } from "@/store/auth";
-import { CheckCircle, XCircle } from "lucide-react";
+import { CheckCircle, XCircle, Download } from "lucide-react";
 import { usePlatformConfig } from "@/shared/hooks/use-platform-config";
+import { exportToCsv } from "@/shared/utils/exportCsv";
 
 function formatNgn(kobo: number = 0) {
   return `₦${(kobo / 100).toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -352,6 +353,39 @@ export function FinancePage() {
             {payoutsLoading && <ShimmerLoader lines={5} />}
             {payouts && (
               <Card>
+                <div className="border-b border-border px-4 py-4 sm:px-6 flex justify-between items-center">
+                  <div>
+                    <h3 className="text-sm font-semibold text-text-main">
+                      Payout Requests
+                    </h3>
+                    <p className="mt-0.5 text-sm text-text-muted">
+                      Review and manage payout requests
+                    </p>
+                  </div>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      if (payouts.items && payouts.items.length > 0) {
+                        exportToCsv(
+                          payouts.items.map((p) => ({
+                            id: p.id,
+                            user_id: p.user_id,
+                            amount_ngn: (p.amount_kobo / 100).toFixed(2),
+                            fee_ngn: (p.fee_kobo / 100).toFixed(2),
+                            status: p.status,
+                            created_at: new Date(p.created_at).toLocaleString(),
+                          })),
+                          "payouts",
+                        );
+                      }
+                    }}
+                    disabled={!payouts.items || payouts.items.length === 0}
+                  >
+                    <Download size={16} className="mr-1" />
+                    Export CSV
+                  </Button>
+                </div>
                 <div className="overflow-x-auto">
                   <table className="min-w-full divide-y divide-border">
                     <thead className="bg-bg-muted">

@@ -2,7 +2,8 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { adminApi } from "@/lib/api";
 import { Card, Badge, Button, ShimmerLoader, Input } from "@/shared/components";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Download } from "lucide-react";
+import { exportToCsv } from "@/shared/utils/exportCsv";
 
 type SuspiciousUser = {
   user_id: number;
@@ -89,6 +90,31 @@ export function SuspiciousUsersTable() {
             disabled={isFetching}
           >
             {isFetching ? "Searching..." : "Search"}
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => {
+              if (users.length > 0) {
+                exportToCsv(
+                  users.map((u) => ({
+                    user_id: u.user_id,
+                    email: u.email,
+                    status: u.status,
+                    ads_watched: u.ads_watched,
+                    total_points: u.total_points,
+                    hours_active: u.hours_active.toFixed(1),
+                    ads_per_hour: u.ads_per_hour.toFixed(1),
+                    risk_level: u.risk_level,
+                  })),
+                  "suspicious_users",
+                );
+              }
+            }}
+            disabled={!shouldFetch || !users || users.length === 0}
+          >
+            <Download size={16} className="mr-1" />
+            Export CSV
           </Button>
         </div>
 

@@ -1,7 +1,15 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { adminApi } from "@/lib/api";
-import { Card, Badge, ShimmerLoader, Select } from "@/shared/components";
+import {
+  Card,
+  Badge,
+  ShimmerLoader,
+  Select,
+  Button,
+} from "@/shared/components";
+import { Download } from "lucide-react";
+import { exportToCsv } from "@/shared/utils/exportCsv";
 
 type SsvLog = {
   id: number;
@@ -53,7 +61,7 @@ export function SsvLogTable() {
         <p className="mt-0.5 text-sm text-text-muted">
           Recent AdMob server-side verification attempts
         </p>
-        <div className="mt-3 flex flex-wrap gap-3">
+        <div className="mt-3 flex flex-wrap gap-3 items-end">
           <Select
             label="Status"
             value={status}
@@ -81,6 +89,31 @@ export function SsvLogTable() {
             ]}
             className="w-48"
           />
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => {
+              if (logs.length > 0) {
+                exportToCsv(
+                  logs.map((log) => ({
+                    id: log.id,
+                    user_id: log.user_id || "N/A",
+                    ad_unit: log.ad_unit || "N/A",
+                    transaction_id: log.transaction_id || "N/A",
+                    status: log.status,
+                    points_credited: log.points_credited || 0,
+                    rejection_reason: log.rejection_reason || "N/A",
+                    created_at: new Date(log.created_at).toLocaleString(),
+                  })),
+                  "ssv_logs",
+                );
+              }
+            }}
+            disabled={!logs || logs.length === 0}
+          >
+            <Download size={16} className="mr-1" />
+            Export CSV
+          </Button>
         </div>
       </div>
 

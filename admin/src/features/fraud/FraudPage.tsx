@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tantml:react-query";
 import { adminApi } from "@/lib/api";
 import type { FraudFlagListResponse } from "@/lib/types";
 import { useState } from "react";
@@ -21,7 +21,9 @@ import {
   CheckCircle,
   XCircle,
   TrendingUp,
+  Download,
 } from "lucide-react";
+import { exportToCsv } from "@/shared/utils/exportCsv";
 
 export function FraudPage() {
   const { onMenuClick } = useLayoutContext();
@@ -232,31 +234,60 @@ export function FraudPage() {
           {/* Filters (only for sessions tab) */}
           {activeTab === "sessions" && (
             <div className="border-b border-border px-4 py-4 sm:px-6">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
-                <Select
-                  label="Severity"
-                  value={severity}
-                  onChange={(value) => setSeverity(value)}
-                  options={[
-                    { value: "", label: "All Severity" },
-                    { value: "low", label: "Low" },
-                    { value: "medium", label: "Medium" },
-                    { value: "high", label: "High" },
-                  ]}
-                  className="lg:max-w-xs"
-                />
-                <Select
-                  label="Status"
-                  value={status}
-                  onChange={(value) => setStatus(value)}
-                  options={[
-                    { value: "", label: "All Status" },
-                    { value: "pending", label: "Pending" },
-                    { value: "reviewed", label: "Reviewed" },
-                    { value: "resolved", label: "Resolved" },
-                  ]}
-                  className="lg:max-w-xs"
-                />
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
+                  <Select
+                    label="Severity"
+                    value={severity}
+                    onChange={(value) => setSeverity(value)}
+                    options={[
+                      { value: "", label: "All Severity" },
+                      { value: "low", label: "Low" },
+                      { value: "medium", label: "Medium" },
+                      { value: "high", label: "High" },
+                    ]}
+                    className="lg:max-w-xs"
+                  />
+                  <Select
+                    label="Status"
+                    value={status}
+                    onChange={(value) => setStatus(value)}
+                    options={[
+                      { value: "", label: "All Status" },
+                      { value: "pending", label: "Pending" },
+                      { value: "reviewed", label: "Reviewed" },
+                      { value: "resolved", label: "Resolved" },
+                    ]}
+                    className="lg:max-w-xs"
+                  />
+                </div>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    if (sessionsData?.items && sessionsData.items.length > 0) {
+                      exportToCsv(
+                        sessionsData.items.map((flag) => ({
+                          id: flag.id,
+                          user_id: flag.user_id ?? "N/A",
+                          flag_type: flag.flag_type,
+                          severity: flag.severity,
+                          status: flag.status,
+                          created_at: new Date(
+                            flag.created_at,
+                          ).toLocaleString(),
+                        })),
+                        "fraud_sessions",
+                      );
+                    }
+                  }}
+                  disabled={
+                    !sessionsData?.items || sessionsData.items.length === 0
+                  }
+                >
+                  <Download size={16} className="mr-1" />
+                  Export CSV
+                </Button>
               </div>
             </div>
           )}
@@ -400,6 +431,46 @@ export function FraudPage() {
           {/* Duplicates Tab */}
           {activeTab === "duplicates" && (
             <>
+              <div className="border-b border-border px-4 py-4 sm:px-6 flex justify-between items-center">
+                <div>
+                  <h3 className="text-sm font-semibold text-text-main">
+                    Duplicate Accounts
+                  </h3>
+                  <p className="mt-0.5 text-sm text-text-muted">
+                    Users flagged for having multiple accounts
+                  </p>
+                </div>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    if (
+                      duplicatesData?.items &&
+                      duplicatesData.items.length > 0
+                    ) {
+                      exportToCsv(
+                        duplicatesData.items.map((flag) => ({
+                          id: flag.id,
+                          user_id: flag.user_id ?? "N/A",
+                          details: flag.details,
+                          severity: flag.severity,
+                          status: flag.status,
+                          created_at: new Date(
+                            flag.created_at,
+                          ).toLocaleString(),
+                        })),
+                        "fraud_duplicates",
+                      );
+                    }
+                  }}
+                  disabled={
+                    !duplicatesData?.items || duplicatesData.items.length === 0
+                  }
+                >
+                  <Download size={16} className="mr-1" />
+                  Export CSV
+                </Button>
+              </div>
               {duplicatesLoading && (
                 <div className="p-4 sm:p-6">
                   <ShimmerLoader lines={5} />
@@ -536,6 +607,46 @@ export function FraudPage() {
           {/* Referrals Tab */}
           {activeTab === "referrals" && (
             <>
+              <div className="border-b border-border px-4 py-4 sm:px-6 flex justify-between items-center">
+                <div>
+                  <h3 className="text-sm font-semibold text-text-main">
+                    Referral Abuse
+                  </h3>
+                  <p className="mt-0.5 text-sm text-text-muted">
+                    Users flagged for suspicious referral patterns
+                  </p>
+                </div>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    if (
+                      referralsData?.items &&
+                      referralsData.items.length > 0
+                    ) {
+                      exportToCsv(
+                        referralsData.items.map((flag) => ({
+                          id: flag.id,
+                          user_id: flag.user_id ?? "N/A",
+                          details: flag.details,
+                          severity: flag.severity,
+                          status: flag.status,
+                          created_at: new Date(
+                            flag.created_at,
+                          ).toLocaleString(),
+                        })),
+                        "fraud_referrals",
+                      );
+                    }
+                  }}
+                  disabled={
+                    !referralsData?.items || referralsData.items.length === 0
+                  }
+                >
+                  <Download size={16} className="mr-1" />
+                  Export CSV
+                </Button>
+              </div>
               {referralsLoading && (
                 <div className="p-4 sm:p-6">
                   <ShimmerLoader lines={5} />
@@ -674,31 +785,60 @@ export function FraudPage() {
             <>
               {/* Filters for Ad Fraud */}
               <div className="border-b border-border px-4 py-4 sm:px-6">
-                <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
-                  <Select
-                    label="Minimum Ads Threshold"
-                    value={minAds}
-                    onChange={(e) => setMinAds(e.target.value)}
-                    options={[
-                      { value: "150", label: "150+ ads (Normal limit)" },
-                      { value: "200", label: "200+ ads (Power user limit)" },
-                      { value: "250", label: "250+ ads (Suspicious)" },
-                      { value: "300", label: "300+ ads (High risk)" },
-                    ]}
-                    className="lg:max-w-xs"
-                  />
-                  <Select
-                    label="Time Window"
-                    value={hours}
-                    onChange={(e) => setHours(e.target.value)}
-                    options={[
-                      { value: "6", label: "Last 6 Hours" },
-                      { value: "12", label: "Last 12 Hours" },
-                      { value: "24", label: "Last 24 Hours" },
-                      { value: "48", label: "Last 48 Hours" },
-                    ]}
-                    className="lg:max-w-xs"
-                  />
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
+                    <Select
+                      label="Minimum Ads Threshold"
+                      value={minAds}
+                      onChange={(e) => setMinAds(e.target.value)}
+                      options={[
+                        { value: "150", label: "150+ ads (Normal limit)" },
+                        { value: "200", label: "200+ ads (Power user limit)" },
+                        { value: "250", label: "250+ ads (Suspicious)" },
+                        { value: "300", label: "300+ ads (High risk)" },
+                      ]}
+                      className="lg:max-w-xs"
+                    />
+                    <Select
+                      label="Time Window"
+                      value={hours}
+                      onChange={(e) => setHours(e.target.value)}
+                      options={[
+                        { value: "6", label: "Last 6 Hours" },
+                        { value: "12", label: "Last 12 Hours" },
+                        { value: "24", label: "Last 24 Hours" },
+                        { value: "48", label: "Last 48 Hours" },
+                      ]}
+                      className="lg:max-w-xs"
+                    />
+                  </div>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      if (adFraudData && adFraudData.length > 0) {
+                        exportToCsv(
+                          adFraudData.map((user: any) => ({
+                            user_id: user.user_id,
+                            email: user.email,
+                            status: user.status,
+                            ads_watched: user.ads_watched,
+                            total_points: user.total_points,
+                            hours_active:
+                              user.hours_active?.toFixed(1) || "N/A",
+                            ads_per_hour:
+                              user.ads_per_hour?.toFixed(1) || "N/A",
+                            risk_level: user.risk_level,
+                          })),
+                          "fraud_ad_abuse",
+                        );
+                      }
+                    }}
+                    disabled={!adFraudData || adFraudData.length === 0}
+                  >
+                    <Download size={16} className="mr-1" />
+                    Export CSV
+                  </Button>
                 </div>
               </div>
 
