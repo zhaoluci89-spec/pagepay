@@ -4,6 +4,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { apiFetch, API_URL } from '@/src/shared/api/client';
+import { PLATFORM_ENV } from '@/src/shared/lib/ads';
 import { RewardedAd } from '@/components/ads/RewardedAd';
 import { NativeAdBanner } from '@/components/ads/NativeAdBanner';
 import { BodyRenderer } from '@/components/reader/BodyRenderer';
@@ -122,6 +123,7 @@ export default function ReaderScreen() {
   // and stages pending_points inside /session/end; the auto-claim after
   // /session/end closes the loop without surfacing a third modal.
   const [postReadAdOpen, setPostReadAdOpen] = useState(false);
+  const [preloadPostRead, setPreloadPostRead] = useState(false);
 
   // Fetch native ad unit for in-content placement
   const [nativeAdUnit, setNativeAdUnit] = useState('');
@@ -220,7 +222,7 @@ export default function ReaderScreen() {
   const { data: adConfig } = useQuery({
     queryKey: ['ads-config'],
     queryFn: async () => {
-      const res = await apiFetch('/api/v1/config/ads?env=dev');
+      const res = await apiFetch(`/api/v1/config/ads?env=${PLATFORM_ENV}`);
       if (!res.ok) return {};
       return (await res.json()) as Record<string, string>;
     },
@@ -483,12 +485,9 @@ export default function ReaderScreen() {
     newBalance: number;
     pending?: boolean;
   }) => {
-    // Ad reward already credited by the SSV flow (or
-    // pending — the server may still be processing the
-    // callback). Invalidate queries to refresh balance either
-    // way.
     queryClient.invalidateQueries({ queryKey: ['me'] });
     queryClient.invalidateQueries({ queryKey: ['wallet'] });
+    setPreloadPostRead(true);
   };
 
   const onPreReadSkipped = () => {
@@ -798,7 +797,8 @@ export default function ReaderScreen() {
         skipLabel={t('reader.ad_pre_skip')}
         onClaimed={onPostReadAdClaimed}
         onSkipped={onPostReadAdSkipped}
-        onClose={() => {}}
+        onClose={() => setPreloadPostRead(false)}
+        preload={preloadPostRead}
       />
 
       {/* v3 §3.2 — Share-as-image for highlights. Renders an

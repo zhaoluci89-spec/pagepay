@@ -567,7 +567,27 @@ async def admob_ssv_callback(
         )
 
     # ── 6. Credit the user or session ────────────────────────────────
-    points = ads_service.points_for_rewarded_ad()
+    # AdMob never sends real revenue in the SSV webhook. The only
+    # numeric reward payload is `reward_amount`: the static value
+    # you manually set in the AdMob dashboard. We use that as the
+    # source of truth for points, applying the platform/user split
+    # here rather than relying on a separate hardcoded constant.
+    raw_reward = query_params.get("reward_amount")
+    try:
+        reward_amount = int(raw_reward) if raw_reward is not None else 0
+    except (TypeError, ValueError):
+        reward_amount = 0
+
+    if reward_amount <= 0:
+        logger.warning(
+            "AdMob SSV: non-positive reward_amount=%r for tx=%s user=%s",
+            raw_reward, transaction_id, user_id,
+        )
+        await ads_service.mark_ad_request_rejected(db, req, reason="invalid_reward_amount")
+        await db.commit()
+        return {"status": "ignored", "reason": "invalid_reward_amount"}
+
+    points = int(reward_amount * USER_SHARE)
 
     # Mark the AdRequest as credited (audit trail)
     await ads_service.mark_ad_request_credited(

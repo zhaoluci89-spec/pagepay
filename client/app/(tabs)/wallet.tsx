@@ -7,6 +7,7 @@ import * as Haptics from 'expo-haptics';
 import { useTranslation } from 'react-i18next';
 
 import { apiFetch } from '@/src/shared/api/client';
+import { PLATFORM_ENV } from '@/src/shared/lib/ads';
 import { consumePendingWithdrawAfterPin } from '@/src/shared/lib/pin-verify-flag';
 import { formatKobo, formatPoints } from '@/src/shared/lib/money';
 import { useEffectiveScheme } from '@/src/shared/hooks/use-effective-scheme';
@@ -83,7 +84,7 @@ export default function WalletScreen() {
   const { data: adConfig } = useQuery({
     queryKey: ['ads-config'],
     queryFn: async () => {
-      const res = await apiFetch('/api/v1/config/ads?env=dev');
+      const res = await apiFetch(`/api/v1/config/ads?env=${PLATFORM_ENV}`);
       if (!res.ok) return {};
       return (await res.json()) as Record<string, string>;
     },

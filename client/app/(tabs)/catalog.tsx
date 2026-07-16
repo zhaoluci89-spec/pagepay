@@ -17,6 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 
 import { apiFetch } from '@/src/shared/api/client';
+import { PLATFORM_ENV } from '@/src/shared/lib/ads';
 import { useCatalogFilter } from '@/src/shared/lib/catalog-filter';
 import { ContentCard, ContentItem } from '@/components/ContentCard';
 import { ResumeCard } from '@/components/ResumeCard';
@@ -117,7 +118,7 @@ export default function CatalogScreen() {
   const { data: adConfig } = useQuery({
     queryKey: ['ads-config'],
     queryFn: async () => {
-      const res = await apiFetch('/api/v1/config/ads?env=dev');
+      const res = await apiFetch(`/api/v1/config/ads?env=${PLATFORM_ENV}`);
       if (!res.ok) return {};
       return (await res.json()) as Record<string, string>;
     },

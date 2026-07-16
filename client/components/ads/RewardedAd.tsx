@@ -86,6 +86,10 @@ export type RewardedAdProps = {
   onSkipped?: () => void;
   /** Called when the modal closes. */
   onClose: () => void;
+  /** Start loading the ad immediately, even while the modal is
+   *  hidden. When `visible` flips to true the ad may already be
+   *  ready, eliminating the 5–10 s network wait. */
+  preload?: boolean;
 };
 
 export function RewardedAd(props: RewardedAdProps) {
@@ -104,6 +108,7 @@ export function RewardedAd(props: RewardedAdProps) {
     onClaimed,
     onSkipped,
     onClose,
+    preload = false,
   } = props;
 
   const scheme = useEffectiveScheme();
@@ -126,11 +131,10 @@ export function RewardedAd(props: RewardedAdProps) {
   // aborts and the loop exits cleanly.
   const pollAbortRef = useRef<AbortController | null>(null);
 
-  // Load ad when modal opens
+  // Load ad when modal opens, or when preload is requested
   useEffect(() => {
-    // Only load if modal is visible AND we haven't loaded yet
-    if (!visible) {
-      // Modal closed - reset for next time
+    const shouldLoad = visible || preload;
+    if (!shouldLoad) {
       hasLoadedRef.current = false;
       return;
     }
@@ -139,13 +143,12 @@ export function RewardedAd(props: RewardedAdProps) {
       return;
     }
 
-    // Mark as loaded for this modal session
     hasLoadedRef.current = true;
     setAdState('loading');
     setErrorMessage(null);
 
     if (__DEV__) {
-      console.log('[RewardedAd] Loading ad...');
+      console.log('[RewardedAd] Loading ad...', { visible, preload });
     }
 
     (async () => {
@@ -154,12 +157,6 @@ export function RewardedAd(props: RewardedAdProps) {
         const sdk = require('react-native-google-mobile-ads');
         const { RewardedAd: RealRewardedAd, RewardedAdEventType, AdEventType } = sdk;
 
-        // Step 2: ask the server for a one-time AdRequest token.
-        // The returned `custom_data` carries the token into the
-        // SDK; AdMob signs it as part of the SSV callback. We
-        // capture the timestamp BEFORE the request so the
-        // post-ad poll can scope /recent-credits to "credits
-        // that landed from this point on."
         tokenIssuedAtRef.current = new Date().toISOString();
         const { custom_data } = await requestAdToken(adUnitName, sessionId);
 
@@ -190,7 +187,6 @@ export function RewardedAd(props: RewardedAdProps) {
           serverSideVerificationOptions: ssvOptions,
         });
 
-        // Ad loaded successfully
         const unsubLoaded = ad.addAdEventListener(RewardedAdEventType.LOADED, () => {
           if (__DEV__) {
             console.log('[RewardedAd] Ad ready');
@@ -198,7 +194,6 @@ export function RewardedAd(props: RewardedAdProps) {
           setAdState('ready');
         });
 
-        // User earned reward
         const unsubEarned = ad.addAdEventListener(RewardedAdEventType.EARNED_REWARD, (reward: { type: string; amount: number }) => {
           if (__DEV__) {
             console.log('[RewardedAd] Reward earned:', reward);
@@ -206,32 +201,24 @@ export function RewardedAd(props: RewardedAdProps) {
           rewardDataRef.current = reward;
         });
 
-        // Ad closed. This is where the credit polling kicks in.
         const unsubClosed = ad.addAdEventListener(AdEventType.CLOSED, async () => {
           if (__DEV__) {
             console.log('[RewardedAd] Ad closed');
           }
 
-          // Cleanup listeners
           unsubLoaded();
           unsubEarned();
           unsubClosed();
 
-          // Cleanup ad
           rewardedRef.current = null;
+          hasLoadedRef.current = false;
 
-          // Fire onClose immediately so the parent can dismiss the modal
-          // and unlock the UI/timer without waiting for the credit poll.
           onClose();
 
-          // Handle reward or skip
           if (rewardDataRef.current) {
             await handleRewardClaimed();
             rewardDataRef.current = null;
           } else {
-            // No EARNED_REWARD event = user closed the ad before
-            // completing it. No credit will land server-side.
-            // Match the legacy behavior: skip → onSkipped.
             onSkipped?.();
           }
         });
@@ -245,12 +232,14 @@ export function RewardedAd(props: RewardedAdProps) {
         }
         setAdState('error');
         setErrorMessage(err instanceof Error ? err.message : 'Ad service unavailable');
+        hasLoadedRef.current = false;
       }
     })();
 
-    // Cleanup on unmount: abort any in-flight poll so the
-    // /recent-credits loop exits cleanly when the user
-    // navigates away mid-ad.
+    return () => {
+      // Cleanup handled by ad event listeners
+    };
+  }, [visible, preload, adUnit, userId, sessionId, adUnitName, onClose, onClaimed, onSkipped]);
     return () => {
       pollAbortRef.current?.abort();
       pollAbortRef.current = null;

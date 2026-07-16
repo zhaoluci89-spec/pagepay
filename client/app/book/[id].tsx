@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 
 import { apiFetch } from '@/src/shared/api/client';
+import { PLATFORM_ENV } from '@/src/shared/lib/ads';
 import { NativeAdBanner } from '@/components/ads/NativeAdBanner';
 import { AttributionCard } from '@/components/AttributionCard';
 import { SocialBar } from '@/components/SocialBar';
@@ -87,7 +88,7 @@ export default function BookDetailScreen() {
   const { data: adConfig } = useQuery({
     queryKey: ['ads-config'],
     queryFn: async () => {
-      const res = await apiFetch('/api/v1/config/ads?env=dev');
+      const res = await apiFetch(`/api/v1/config/ads?env=${PLATFORM_ENV}`);
       if (!res.ok) return {};
       return (await res.json()) as Record<string, string>;
     },

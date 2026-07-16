@@ -15,6 +15,7 @@ import Animated, {
 import * as Haptics from 'expo-haptics';
 
 import { apiFetch } from '@/src/shared/api/client';
+import { PLATFORM_ENV } from '@/src/shared/lib/ads';
 import { PagePay } from '@/constants/theme';
 import { useEffectiveScheme } from '@/src/shared/hooks/use-effective-scheme';
 import { PrimaryButton } from '@/components/PrimaryButton';
@@ -101,7 +102,7 @@ export function UnlockModal({
   const { data: adConfig } = useQuery({
     queryKey: ['ads-config'],
     queryFn: async () => {
-      const res = await apiFetch(`/api/v1/config/ads?env=${__DEV__ ? 'dev' : 'prod'}`);
+      const res = await apiFetch(`/api/v1/config/ads?env=${PLATFORM_ENV}`);
       if (!res.ok) return {};
       return (await res.json()) as Record<string, string>;
     },
