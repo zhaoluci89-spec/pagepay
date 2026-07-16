@@ -336,43 +336,45 @@ async def _verify_admob_ssv_signature(
     """Verify the ECDSA P-256 signature on an AdMob SSV callback.
 
     Per Google's official docs:
-    - The data to verify is the raw query string up to (but not including)
-      the `&signature=` parameter, preserving the original parameter order.
-    - The signature is base64url-encoded DER format (no standard padding).
+    - The signed content is the query parameters EXCEPT `signature`
+      and `key_id`, sorted alphabetically by key, then URL-encoded.
+    - The signature is base64url-encoded DER format.
     """
     signature_b64 = query_params.get("signature")
     key_id = query_params.get("key_id")
     if not signature_b64 or not key_id:
         return False
 
-    # Extract the data that was signed: everything before &signature=
-    # or ?signature= (the latter when signature is the first query param).
-    sig_idx = raw_query_string.find("&signature=")
-    if sig_idx == -1:
-        if raw_query_string.startswith("signature="):
-            sig_idx = 0
-        else:
-            return False
-    signed_data = raw_query_string[:sig_idx]
-
-    # Base64url decode the signature (no padding, - and _ instead of + and /)
+    # Decode signature: base64url, pad to multiple of 4.
     import base64
-    normalized_sig = signature_b64.replace("-", "+").replace("_", "/")
-    padding = 4 - len(normalized_sig) % 4
-    if padding < 4:
-        normalized_sig += "=" * padding
+    padded_sig = signature_b64 + "==="
     try:
-        signature = base64.urlsafe_b64decode(signature_b64)
+        signature = base64.urlsafe_b64decode(padded_sig)
     except Exception:
-        try:
-            signature = base64.b64decode(normalized_sig)
-        except Exception:
-            return False
+        return False
+
+    # Reconstruct the signed content: all query params except
+    # `signature` and `key_id`, sorted alphabetically and URL-encoded.
+    try:
+        query_data = {}
+        for k, v in query_params.items():
+            if k in ("signature", "key_id"):
+                continue
+            query_data[k] = v
+
+        sorted_items = sorted(query_data.items())
+        sorted_query_string = "&".join(
+            f"{k}={v}" for k, v in sorted_items
+        )
+        signed_data = sorted_query_string
+    except Exception:
+        return False
 
     try:
         keys = await _fetch_verifier_keys()
         if key_id not in keys:
             logger.warning("AdMob SSV: unknown key_id=%s", key_id)
+            logger.debug("AdMob SSV available key_ids: %s", list(keys.keys())[:10])
             return False
 
         from cryptography.hazmat.primitives.asymmetric import ec
@@ -382,12 +384,20 @@ async def _verify_admob_ssv_signature(
         pem_data = keys[key_id].encode("utf-8")
         public_key = serialization.load_pem_public_key(pem_data, backend=default_backend())
 
+        logger.debug(
+            "AdMob SSV verifying: key_id=%s, signed_data=%r, signature_len=%d",
+            key_id,
+            signed_data[:200],
+            len(signature),
+        )
+
         try:
             public_key.verify(
                 signature,
                 signed_data.encode("utf-8"),
                 ec.ECDSA(hashes.SHA256()),
             )
+            logger.info("AdMob SSV: verification succeeded for key_id=%s tx=%s", key_id, query_params.get("transaction_id"))
             return True
         except Exception as first_exc:
             logger.warning(
@@ -409,7 +419,7 @@ async def _verify_admob_ssv_signature(
                     signed_data.encode("utf-8"),
                     ec.ECDSA(hashes.SHA256()),
                 )
-                logger.info("AdMob SSV: verification succeeded after key refresh for key_id=%s", key_id)
+                logger.info("AdMob SSV: verification succeeded after key refresh for key_id=%s tx=%s", key_id, query_params.get("transaction_id"))
                 return True
             except Exception as retry_exc:
                 logger.error(
