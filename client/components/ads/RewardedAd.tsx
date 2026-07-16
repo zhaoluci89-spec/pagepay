@@ -163,11 +163,31 @@ export function RewardedAd(props: RewardedAdProps) {
         tokenIssuedAtRef.current = new Date().toISOString();
         const { custom_data } = await requestAdToken(adUnitName, sessionId);
 
+        if (__DEV__) {
+          console.log('[RewardedAd] requestAdToken result:', {
+            adUnitName,
+            sessionId,
+            custom_data_length: custom_data?.length ?? 0,
+            custom_data_preview: custom_data ? `${custom_data.slice(0, 20)}...` : 'EMPTY',
+          });
+        }
+
+        const ssvOptions = {
+          userId: userId.toString(),
+          customData: custom_data,
+        };
+
+        if (__DEV__) {
+          console.log('[RewardedAd] createForAdRequest SSV options:', {
+            adUnit,
+            userId: ssvOptions.userId,
+            customData_length: ssvOptions.customData?.length ?? 0,
+            customData_preview: ssvOptions.customData ? `${ssvOptions.customData.slice(0, 20)}...` : 'EMPTY',
+          });
+        }
+
         const ad = RealRewardedAd.createForAdRequest(adUnit, {
-          serverSideVerificationOptions: {
-            userId: userId.toString(),
-            customData: custom_data,
-          },
+          serverSideVerificationOptions: ssvOptions,
         });
 
         // Ad loaded successfully
