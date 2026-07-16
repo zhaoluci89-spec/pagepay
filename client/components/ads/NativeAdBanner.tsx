@@ -12,7 +12,7 @@
  * - Respects app theme (light/dark mode)
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -32,138 +32,140 @@ export type NativeAdBannerProps = {
 
 
 export function NativeAdBanner({ adUnit, sessionId }: NativeAdBannerProps) {
-  // `sessionId` is kept on the prop type for compatibility
-  // with existing call sites. The legacy logAdImpression()
-  // helper (and the /api/v1/ads/impression endpoint) were
-  // removed in the ad-system security hardening pass — see
-  // src/shared/lib/ads.ts for the new server-authoritative
-  // flow.
   void sessionId;
   const scheme = useEffectiveScheme();
   const tokens = PagePay[scheme];
   const [nativeAd, setNativeAd] = useState<any>(null);
+  const [error, setError] = useState(false);
+  const adRef = useRef<any>(null);
 
-  // Load native ad
   useEffect(() => {
     if (!adUnit || Platform.OS === 'web') {
       return;
     }
 
     let isActive = true;
+    let unsubLoaded: (() => void) | null = null;
+    let unsubError: (() => void) | null = null;
 
     (async () => {
       try {
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         const { NativeAd, NativeAdEventType } = require('react-native-google-mobile-ads');
 
-        // Load ad using createForAdRequest which returns a Promise
-        const ad = await NativeAd.createForAdRequest(adUnit);
+        const ad = NativeAd.createForAdRequest(adUnit);
+        adRef.current = ad;
 
-        if (!isActive) {
-          ad.destroy();
-          return;
-        }
-
-        if (__DEV__) {
-          console.log('[NativeAdBanner] Ad loaded successfully');
-        }
-
-        // Set up event listeners
-        ad.addAdEventListener(NativeAdEventType.CLICKED, () => {
+        unsubLoaded = ad.addAdEventListener(NativeAdEventType.LOADED, () => {
           if (__DEV__) {
-            console.log('[NativeAdBanner] Ad clicked');
+            console.log('[NativeAdBanner] Ad loaded successfully');
+          }
+          if (isActive) {
+            setNativeAd(ad);
+            setError(false);
           }
         });
 
-        setNativeAd(ad);
+        unsubError = ad.addAdEventListener(NativeAdEventType.ERROR, (err: any) => {
+          if (__DEV__) {
+            console.warn('[NativeAdBanner] Ad failed to load:', err);
+          }
+          if (isActive) {
+            setError(true);
+          }
+        });
+
+        ad.load();
       } catch (err) {
         if (__DEV__) {
-          console.warn('[NativeAdBanner] Failed to load ad:', err);
+          console.warn('[NativeAdBanner] Failed to create ad:', err);
+        }
+        if (isActive) {
+          setError(true);
         }
       }
     })();
 
     return () => {
       isActive = false;
-      if (nativeAd) {
-        nativeAd.destroy();
+      if (unsubLoaded) unsubLoaded();
+      if (unsubError) unsubError();
+      if (adRef.current) {
+        adRef.current.destroy();
+        adRef.current = null;
       }
     };
   }, [adUnit]);
 
-  // Render native ad if loaded
-  if (nativeAd && Platform.OS !== 'web') {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { NativeAdView, NativeAsset, NativeMediaView, NativeAssetType } = require('react-native-google-mobile-ads');
+  if (error || !nativeAd) {
+    return null;
+  }
 
-      return (
-        <View style={[styles.container, { backgroundColor: tokens.card, borderColor: tokens.border }]}>
-          {/* Ad Label */}
-          <View style={styles.adBadge}>
-            <Ionicons name="megaphone-outline" size={10} color={tokens.inkMuted} />
-            <Text style={[styles.adLabel, { color: tokens.inkMuted }]}>Ad</Text>
-          </View>
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { NativeAdView, NativeAsset, NativeMediaView, NativeAssetType } = require('react-native-google-mobile-ads');
 
-          {/* Native Ad Content - Register with nativeAd prop */}
-          <NativeAdView nativeAd={nativeAd} style={styles.nativeAdContent}>
-            {/* Advertiser Info Row */}
-            <View style={styles.advertiserRow}>
-              {/* Icon - Wrap with NativeAsset */}
-              {nativeAd.icon && (
-                <NativeAsset assetType={NativeAssetType.ICON}>
-                  <View style={styles.icon}>
-                    {/* Icon will be automatically rendered by SDK */}
-                  </View>
-                </NativeAsset>
-              )}
-              
-              {/* Text Content */}
-              <View style={styles.textContent}>
-                {/* Headline - Wrap with NativeAsset */}
-                <NativeAsset assetType={NativeAssetType.HEADLINE}>
-                  <Text style={[styles.headline, { color: tokens.ink }]} numberOfLines={1}>
-                    {nativeAd.headline}
+    return (
+      <View style={[styles.container, { backgroundColor: tokens.card, borderColor: tokens.border }]}>
+        {/* Ad Label */}
+        <View style={styles.adBadge}>
+          <Ionicons name="megaphone-outline" size={10} color={tokens.inkMuted} />
+          <Text style={[styles.adLabel, { color: tokens.inkMuted }]}>Ad</Text>
+        </View>
+
+        {/* Native Ad Content */}
+        <NativeAdView nativeAd={nativeAd} style={styles.nativeAdContent}>
+          {/* Advertiser Info Row */}
+          <View style={styles.advertiserRow}>
+            {/* Icon */}
+            {nativeAd.icon && (
+              <NativeAsset assetType={NativeAssetType.ICON}>
+                <View style={styles.icon} />
+              </NativeAsset>
+            )}
+
+            {/* Text Content */}
+            <View style={styles.textContent}>
+              {/* Headline */}
+              <NativeAsset assetType={NativeAssetType.HEADLINE}>
+                <Text style={[styles.headline, { color: tokens.ink }]} numberOfLines={1}>
+                  {nativeAd.headline}
+                </Text>
+              </NativeAsset>
+
+              {/* Body */}
+              {nativeAd.body && (
+                <NativeAsset assetType={NativeAssetType.BODY}>
+                  <Text style={[styles.body, { color: tokens.inkMuted }]} numberOfLines={2}>
+                    {nativeAd.body}
                   </Text>
-                </NativeAsset>
-
-                {/* Body - Wrap with NativeAsset */}
-                {nativeAd.body && (
-                  <NativeAsset assetType={NativeAssetType.BODY}>
-                    <Text style={[styles.body, { color: tokens.inkMuted }]} numberOfLines={2}>
-                      {nativeAd.body}
-                    </Text>
-                  </NativeAsset>
-                )}
-              </View>
-
-              {/* CTA Button - Wrap with NativeAsset */}
-              {nativeAd.callToAction && (
-                <NativeAsset assetType={NativeAssetType.CALL_TO_ACTION}>
-                  <View style={[styles.cta, { backgroundColor: tokens.mint }]}>
-                    <Text style={styles.ctaText}>{nativeAd.callToAction}</Text>
-                  </View>
                 </NativeAsset>
               )}
             </View>
 
-            {/* Media Asset (Image/Video) */}
-            {nativeAd.mediaContent && (
-              <NativeMediaView style={styles.media} />
+            {/* CTA Button */}
+            {nativeAd.callToAction && (
+              <NativeAsset assetType={NativeAssetType.CALL_TO_ACTION}>
+                <View style={[styles.cta, { backgroundColor: tokens.mint }]}>
+                  <Text style={styles.ctaText}>{nativeAd.callToAction}</Text>
+                </View>
+              </NativeAsset>
             )}
-          </NativeAdView>
-        </View>
-      );
-    } catch (err) {
-      if (__DEV__) {
-        console.warn('[NativeAdBanner] Render failed:', err);
-      }
-    }
-  }
+          </View>
 
-  // Graceful degradation: show nothing if SDK unavailable or ad failed to load
-  // This prevents empty placeholder cards from cluttering the feed
-  return null;
+          {/* Media Asset */}
+          {nativeAd.mediaContent && (
+            <NativeMediaView style={styles.media} />
+          )}
+        </NativeAdView>
+      </View>
+    );
+  } catch (err) {
+    if (__DEV__) {
+      console.warn('[NativeAdBanner] Render failed:', err);
+    }
+    return null;
+  }
 }
 
 

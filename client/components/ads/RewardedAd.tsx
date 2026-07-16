@@ -131,6 +131,16 @@ export function RewardedAd(props: RewardedAdProps) {
   // aborts and the loop exits cleanly.
   const pollAbortRef = useRef<AbortController | null>(null);
 
+  const onCloseRef = useRef(onClose);
+  const onClaimedRef = useRef(onClaimed);
+  const onSkippedRef = useRef(onSkipped);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+    onClaimedRef.current = onClaimed;
+    onSkippedRef.current = onSkipped;
+  }, [onClose, onClaimed, onSkipped]);
+
   // Load ad when modal opens, or when preload is requested
   useEffect(() => {
     const shouldLoad = visible || preload;
@@ -150,6 +160,10 @@ export function RewardedAd(props: RewardedAdProps) {
     if (__DEV__) {
       console.log('[RewardedAd] Loading ad...', { visible, preload });
     }
+
+    let unsubLoaded: (() => void) | null = null;
+    let unsubEarned: (() => void) | null = null;
+    let unsubClosed: (() => void) | null = null;
 
     (async () => {
       try {
@@ -187,39 +201,38 @@ export function RewardedAd(props: RewardedAdProps) {
           serverSideVerificationOptions: ssvOptions,
         });
 
-        const unsubLoaded = ad.addAdEventListener(RewardedAdEventType.LOADED, () => {
+        unsubLoaded = ad.addAdEventListener(RewardedAdEventType.LOADED, () => {
           if (__DEV__) {
             console.log('[RewardedAd] Ad ready');
           }
           setAdState('ready');
         });
 
-        const unsubEarned = ad.addAdEventListener(RewardedAdEventType.EARNED_REWARD, (reward: { type: string; amount: number }) => {
+        unsubEarned = ad.addAdEventListener(RewardedAdEventType.EARNED_REWARD, (reward: { type: string; amount: number }) => {
           if (__DEV__) {
             console.log('[RewardedAd] Reward earned:', reward);
           }
           rewardDataRef.current = reward;
         });
 
-        const unsubClosed = ad.addAdEventListener(AdEventType.CLOSED, async () => {
+        unsubClosed = ad.addAdEventListener(AdEventType.CLOSED, async () => {
           if (__DEV__) {
             console.log('[RewardedAd] Ad closed');
           }
 
-          unsubLoaded();
-          unsubEarned();
-          unsubClosed();
-
+          if (unsubLoaded) unsubLoaded();
+          if (unsubEarned) unsubEarned();
+          if (unsubClosed) unsubClosed();
           rewardedRef.current = null;
           hasLoadedRef.current = false;
 
-          onClose();
+          onCloseRef.current();
 
           if (rewardDataRef.current) {
             await handleRewardClaimed();
             rewardDataRef.current = null;
           } else {
-            onSkipped?.();
+            onSkippedRef.current?.();
           }
         });
 
@@ -239,8 +252,12 @@ export function RewardedAd(props: RewardedAdProps) {
     return () => {
       pollAbortRef.current?.abort();
       pollAbortRef.current = null;
+      if (unsubLoaded) unsubLoaded();
+      if (unsubEarned) unsubEarned();
+      if (unsubClosed) unsubClosed();
+      rewardedRef.current = null;
     };
-  }, [visible, preload, adUnit, userId, sessionId, adUnitName, onClose, onClaimed, onSkipped]);
+  }, [visible, preload, adUnit, userId, sessionId, adUnitName]);
 
   // Step 4-6: poll for the credit. This is the core of the
   // server-authoritative flow — the AdMob SDK has already
