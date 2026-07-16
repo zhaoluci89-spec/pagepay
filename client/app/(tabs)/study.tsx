@@ -432,6 +432,10 @@ export default function StudyScreen() {
         }
       }
       setUnlockedAssets(unlockedFromBackend);
+    } else {
+      const data = await res.json().catch(() => ({}));
+      setSelectedMaterial(null);
+      setError(typeof data?.detail === 'string' ? data.detail : 'Failed to load material.');
     }
   };
 

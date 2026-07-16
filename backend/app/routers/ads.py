@@ -278,6 +278,13 @@ _VERIFIER_KEYS_TTL_SECONDS = 86400
 _last_keys_fetch: float = 0
 
 
+def _invalidate_verifier_keys() -> None:
+    """Force a fresh key fetch on the next callback."""
+    global _GOOGLE_VERIFIER_KEYS, _last_keys_fetch
+    _GOOGLE_VERIFIER_KEYS = None
+    _last_keys_fetch = 0
+
+
 async def _fetch_verifier_keys() -> dict[str, str]:
     """Fetch and cache Google's ECDSA P-256 public keys for AdMob SSV.
 
@@ -375,12 +382,42 @@ async def _verify_admob_ssv_signature(
         pem_data = keys[key_id].encode("utf-8")
         public_key = serialization.load_pem_public_key(pem_data, backend=default_backend())
 
-        public_key.verify(
-            signature,
-            signed_data.encode("utf-8"),
-            ec.ECDSA(hashes.SHA256()),
-        )
-        return True
+        try:
+            public_key.verify(
+                signature,
+                signed_data.encode("utf-8"),
+                ec.ECDSA(hashes.SHA256()),
+            )
+            return True
+        except Exception as first_exc:
+            logger.warning(
+                "AdMob SSV: first verification attempt failed for key_id=%s: %s. "
+                "Refreshing verifier keys and retrying...",
+                key_id,
+                first_exc,
+            )
+            _invalidate_verifier_keys()
+            fresh_keys = await _fetch_verifier_keys()
+            if key_id not in fresh_keys:
+                logger.error("AdMob SSV: key_id %s still missing after refresh", key_id)
+                raise
+            fresh_pem = fresh_keys[key_id].encode("utf-8")
+            fresh_key = serialization.load_pem_public_key(fresh_pem, backend=default_backend())
+            try:
+                fresh_key.verify(
+                    signature,
+                    signed_data.encode("utf-8"),
+                    ec.ECDSA(hashes.SHA256()),
+                )
+                logger.info("AdMob SSV: verification succeeded after key refresh for key_id=%s", key_id)
+                return True
+            except Exception as retry_exc:
+                logger.error(
+                    "AdMob SSV: verification still failed after key refresh for key_id=%s: %s",
+                    key_id,
+                    retry_exc,
+                )
+                raise
     except Exception as exc:
         logger.error(
             "AdMob SSV signature verification failed: %s: %s",

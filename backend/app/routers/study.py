@@ -9,7 +9,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
-from sqlalchemy import select, update
+from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.prompts import (
@@ -332,7 +332,7 @@ async def list_materials(
 ):
     query = select(StudyMaterial).where(StudyMaterial.user_id == current_user.id)
     if exam_type:
-        query = query.where(StudyMaterial.exam_type == exam_type)
+        query = query.where(or_(StudyMaterial.exam_type == exam_type, StudyMaterial.exam_type.is_(None)))
     result = await db.execute(query.order_by(StudyMaterial.created_at.desc()))
     materials = result.scalars().all()
 
@@ -572,6 +572,15 @@ async def unlock_asset(
     # Premium users unlock for free
     if is_premium(current_user):
         import json as _json
+        txn = StudyTransaction(
+            user_id=current_user.id,
+            asset_id=asset.id,
+            method="premium",
+            points_spent=0,
+            reward_granted=True,
+        )
+        db.add(txn)
+        await db.commit()
         return UnlockResponse(
             unlocked=True,
             content=_json.loads(asset.content_json),
